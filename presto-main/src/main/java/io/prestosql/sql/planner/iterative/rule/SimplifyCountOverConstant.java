@@ -21,6 +21,7 @@ import io.prestosql.metadata.Metadata;
 import io.prestosql.metadata.ResolvedFunction;
 import io.prestosql.metadata.Signature;
 import io.prestosql.sql.planner.Symbol;
+import io.prestosql.sql.planner.iterative.Lookup;
 import io.prestosql.sql.planner.iterative.Rule;
 import io.prestosql.sql.planner.plan.AggregationNode;
 import io.prestosql.sql.planner.plan.Assignments;
@@ -35,6 +36,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static io.prestosql.matching.Capture.newCapture;
 import static io.prestosql.sql.planner.plan.Patterns.aggregation;
@@ -90,7 +92,7 @@ public class SimplifyCountOverConstant
             return Result.empty();
         }
 
-        return Result.ofPlanNode(new AggregationNode(
+        AggregationNode aggregationNode = new AggregationNode(
                 parent.getId(),
                 child,
                 aggregations,
@@ -98,7 +100,15 @@ public class SimplifyCountOverConstant
                 ImmutableList.of(),
                 parent.getStep(),
                 parent.getHashSymbol(),
-                parent.getGroupIdSymbol()));
+                parent.getGroupIdSymbol());
+
+        Lookup lookup = context.getLookup();
+        aggregationNode.replaceChildren(
+                child.getSources().stream()
+                        .flatMap(lookup::resolveGroup)
+                        .collect(Collectors.toList()));
+
+        return Result.ofPlanNode(aggregationNode);
     }
 
     private static boolean isCountOverConstant(AggregationNode.Aggregation aggregation, Assignments inputs)

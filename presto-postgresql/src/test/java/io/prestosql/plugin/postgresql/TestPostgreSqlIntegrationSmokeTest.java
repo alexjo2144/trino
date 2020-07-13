@@ -296,6 +296,8 @@ public class TestPostgreSqlIntegrationSmokeTest
         // TODO support aggregation over expressions
 
         assertPushedDown("SELECT count(*) FROM nation");
+        assertPushedDown("SELECT count(1) FROM nation");
+        assertPushedDown("SELECT count() FROM nation", "SELECT count(*) FROM nation");
         assertPushedDown("SELECT count(nationkey) FROM nation");
         assertPushedDown("SELECT regionkey, min(nationkey) FROM nation GROUP BY regionkey");
         assertPushedDown("SELECT regionkey, max(nationkey) FROM nation GROUP BY regionkey");
