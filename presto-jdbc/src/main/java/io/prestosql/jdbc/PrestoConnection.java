@@ -89,6 +89,7 @@ public class PrestoConnection
     private final URI jdbcUri;
     private final URI httpUri;
     private final String user;
+    private final Optional<String> sessionUser;
     private final boolean compressionDisabled;
     private final Map<String, String> extraCredentials;
     private final Optional<String> applicationNamePrefix;
@@ -109,6 +110,7 @@ public class PrestoConnection
         uri.getSchema().ifPresent(value -> schema.set(value));
         uri.getCatalog().ifPresent(value -> catalog.set(value));
         this.user = uri.getUser();
+        this.sessionUser = uri.getSessionUser();
         this.applicationNamePrefix = uri.getApplicationNamePrefix();
         this.source = uri.getSource();
         this.extraCredentials = uri.getExtraCredentials();
@@ -707,6 +709,7 @@ public class PrestoConnection
         ClientSession session = new ClientSession(
                 httpUri,
                 user,
+                sessionUser,
                 source,
                 Optional.ofNullable(clientInfo.get(TRACE_TOKEN)),
                 ImmutableSet.copyOf(clientTags),

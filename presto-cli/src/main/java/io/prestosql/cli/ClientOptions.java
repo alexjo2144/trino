@@ -183,6 +183,7 @@ public class ClientOptions
         return new ClientSession(
                 parseServer(server),
                 user,
+                Optional.empty(),
                 source,
                 Optional.ofNullable(traceToken),
                 parseClientTags(nullToEmpty(clientTags)),

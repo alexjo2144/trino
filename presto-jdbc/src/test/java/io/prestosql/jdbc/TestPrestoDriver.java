@@ -48,6 +48,7 @@ import java.util.ArrayList;
 import java.util.GregorianCalendar;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -953,6 +954,23 @@ public class TestPrestoDriver
 
             // make sure query completes
             assertEquals(future.get(10, SECONDS), (Integer) 1);
+        }
+    }
+
+    @Test
+    public void testQueryUser()
+            throws SQLException
+    {
+        String url = format("jdbc:presto://%s/%s", server.getAddress(), "blackhole");
+        Properties connectionProperties = new Properties();
+        connectionProperties.setProperty("user", "test");
+        connectionProperties.setProperty("requestedUser", "actualUser");
+
+        try (Connection connection = DriverManager.getConnection(url,  connectionProperties);
+                Statement statement = connection.createStatement();
+                ResultSet resultSet = statement.executeQuery("SELECT current_user")) {
+            assertTrue(resultSet.next());
+            assertEquals(resultSet.getString(1), "actualUser");
         }
     }
 
