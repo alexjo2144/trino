@@ -88,6 +88,7 @@ public class ParquetFileWriterFactory
         ParquetWriterOptions parquetWriterOptions = ParquetWriterOptions.builder()
                 .setMaxPageSize(HiveSessionProperties.getParquetWriterPageSize(session))
                 .setMaxBlockSize(HiveSessionProperties.getParquetWriterBlockSize(session))
+                .setRowGroupMaxRowCount(HiveSessionProperties.getParquetMaxRowGroupRowCount(session))
                 .build();
 
         CompressionCodecName compressionCodecName = getCompression(conf);
