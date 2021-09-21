@@ -13,6 +13,8 @@
  */
 package io.trino.plugin.iceberg;
 
+import io.trino.Session;
+
 import static org.apache.iceberg.FileFormat.PARQUET;
 
 public class TestIcebergParquetConnectorTest
@@ -21,5 +23,29 @@ public class TestIcebergParquetConnectorTest
     public TestIcebergParquetConnectorTest()
     {
         super(PARQUET);
+    }
+
+    @Override
+    protected boolean supportsIcebergFileStatistics(String typeName)
+    {
+        return true;
+    }
+
+    @Override
+    protected boolean supportsRowGroupStatistics(String typeName)
+    {
+        return !(typeName.equalsIgnoreCase("varbinary") ||
+                typeName.contains("decimal") ||
+                typeName.contains("time"));
+    }
+
+    @Override
+    protected Session withSmallRowGroups(Session session)
+    {
+        return Session.builder(session)
+                .setCatalogSessionProperty("iceberg", "parquet_writer_page_size", "100B")
+                .setCatalogSessionProperty("iceberg", "parquet_writer_block_size", "100B")
+                .setCatalogSessionProperty("iceberg", "parquet_writer_row_group_max_row_count", "10")
+                .build();
     }
 }
