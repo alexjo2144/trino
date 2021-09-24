@@ -35,8 +35,7 @@ public class TestIcebergParquetConnectorTest
     protected boolean supportsRowGroupStatistics(String typeName)
     {
         return !(typeName.equalsIgnoreCase("varbinary") ||
-                typeName.contains("decimal") ||
-                typeName.contains("time"));
+                typeName.contains("decimal"));
     }
 
     @Override

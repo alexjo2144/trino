@@ -23,6 +23,7 @@ import io.trino.parquet.ParquetCorruptionException;
 import io.trino.parquet.ParquetDataSourceId;
 import io.trino.parquet.RichColumnDescriptor;
 import io.trino.parquet.dictionary.Dictionary;
+import io.trino.plugin.base.type.TrinoTimestampEncoder;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.Range;
 import io.trino.spi.predicate.TupleDomain;
@@ -40,6 +41,8 @@ import org.apache.parquet.hadoop.metadata.ColumnPath;
 import org.apache.parquet.internal.column.columnindex.ColumnIndex;
 import org.apache.parquet.internal.filter2.columnindex.ColumnIndexStore;
 import org.apache.parquet.io.api.Binary;
+import org.apache.parquet.schema.LogicalTypeAnnotation;
+import org.apache.parquet.schema.LogicalTypeAnnotation.TimestampLogicalTypeAnnotation;
 import org.apache.parquet.schema.PrimitiveType;
 import org.joda.time.DateTimeZone;
 
@@ -53,6 +56,7 @@ import java.util.function.Function;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static io.trino.parquet.ParquetTimestampUtils.decode;
+import static io.trino.parquet.ParquetTimestampUtils.decodeInt64Timestamp;
 import static io.trino.parquet.ParquetTypeUtils.getLongDecimalValue;
 import static io.trino.parquet.ParquetTypeUtils.getShortDecimalValue;
 import static io.trino.parquet.predicate.PredicateUtils.isStatisticsOverflow;
@@ -69,6 +73,8 @@ import static java.lang.Float.floatToRawIntBits;
 import static java.lang.String.format;
 import static java.nio.ByteOrder.LITTLE_ENDIAN;
 import static java.util.Objects.requireNonNull;
+import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT64;
+import static org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName.INT96;
 
 public class TupleDomainParquetPredicate
         implements Predicate
@@ -109,7 +115,13 @@ public class TupleDomainParquetPredicate
                 continue;
             }
 
-            Domain domain = getDomain(effectivePredicateDomain.getType(), numberOfRows, columnStatistics, id, column.toString(), timeZone);
+            Domain domain = getDomain(
+                    column,
+                    effectivePredicateDomain.getType(),
+                    numberOfRows,
+                    columnStatistics,
+                    id,
+                    timeZone);
             if (!effectivePredicateDomain.overlaps(domain)) {
                 return false;
             }
@@ -182,11 +194,11 @@ public class TupleDomainParquetPredicate
 
     @VisibleForTesting
     public static Domain getDomain(
+            ColumnDescriptor column,
             Type type,
             long rowCount,
             Statistics<?> statistics,
             ParquetDataSourceId id,
-            String column,
             DateTimeZone timeZone)
             throws ParquetCorruptionException
     {
@@ -205,10 +217,16 @@ public class TupleDomainParquetPredicate
         }
 
         try {
-            return getDomain(type, ImmutableList.of(statistics.genericGetMin()), ImmutableList.of(statistics.genericGetMax()), hasNullValue, timeZone);
+            return getDomain(
+                    column,
+                    type,
+                    ImmutableList.of(statistics.genericGetMin()),
+                    ImmutableList.of(statistics.genericGetMax()),
+                    hasNullValue,
+                    timeZone);
         }
         catch (Exception e) {
-            throw corruptionException(column, id, statistics, e);
+            throw corruptionException(column.getPrimitiveType().getName(), id, statistics, e);
         }
     }
 
@@ -217,6 +235,7 @@ public class TupleDomainParquetPredicate
      * Both arrays must have the same length.
      */
     private static Domain getDomain(
+            ColumnDescriptor column,
             Type type,
             List<Object> minimums,
             List<Object> maximums,
@@ -327,22 +346,50 @@ public class TupleDomainParquetPredicate
         }
 
         if (type instanceof TimestampType) {
-            List<Object> values = new ArrayList<>();
-            for (int i = 0; i < minimums.size(); i++) {
-                Object min = minimums.get(i);
-                Object max = maximums.get(i);
+            if (column.getPrimitiveType().getPrimitiveTypeName().equals(INT96)) {
+                TrinoTimestampEncoder<?> timestampEncoder = createTimestampEncoder((TimestampType) type, timeZone);
+                List<Object> values = new ArrayList<>();
+                for (int i = 0; i < minimums.size(); i++) {
+                    Object min = minimums.get(i);
+                    Object max = maximums.get(i);
 
-                // Parquet INT96 timestamp values were compared incorrectly for the purposes of producing statistics by older parquet writers, so
-                // PARQUET-1065 deprecated them. The result is that any writer that produced stats was producing unusable incorrect values, except
-                // the special case where min == max and an incorrect ordering would not be material to the result. PARQUET-1026 made binary stats
-                // available and valid in that special case
-                if (!(min instanceof Binary) || !(max instanceof Binary) || !min.equals(max)) {
+                    // Parquet INT96 timestamp values were compared incorrectly for the purposes of producing statistics by older parquet writers, so
+                    // PARQUET-1065 deprecated them. The result is that any writer that produced stats was producing unusable incorrect values, except
+                    // the special case where min == max and an incorrect ordering would not be material to the result. PARQUET-1026 made binary stats
+                    // available and valid in that special case
+                    if (!(min instanceof Binary) || !(max instanceof Binary) || !min.equals(max)) {
+                        return Domain.create(ValueSet.all(type), hasNullValue);
+                    }
+
+                    values.add(timestampEncoder.getTimestamp(decode((Binary) min)));
+                }
+                return Domain.multipleValues(type, values, hasNullValue);
+            }
+            else if (column.getPrimitiveType().getPrimitiveTypeName().equals(INT64)) {
+                LogicalTypeAnnotation logicalTypeAnnotation = column.getPrimitiveType().getLogicalTypeAnnotation();
+                if (!(logicalTypeAnnotation == null || logicalTypeAnnotation instanceof TimestampLogicalTypeAnnotation)) {
+                    // Invalid statistics. Unit and UTC adjustment are not known
                     return Domain.create(ValueSet.all(type), hasNullValue);
                 }
 
-                values.add(createTimestampEncoder((TimestampType) type, timeZone).getTimestamp(decode((Binary) min)));
+                TimestampLogicalTypeAnnotation timestampTypeAnnotation = (TimestampLogicalTypeAnnotation) logicalTypeAnnotation;
+                // TODO: TimeZone should probably be based on timestampTypeEncoding.isAdjustedToUTC()
+                TrinoTimestampEncoder<?> timestampEncoder = createTimestampEncoder((TimestampType) type, DateTimeZone.UTC);
+
+                List<Range> ranges = new ArrayList<>();
+                for (int i = 0; i < minimums.size(); i++) {
+                    long min = asLong(minimums.get(i));
+                    long max = asLong(maximums.get(i));
+
+                    ranges.add(Range.range(
+                            type,
+                            timestampEncoder.getTimestamp(decodeInt64Timestamp(min, timestampTypeAnnotation.getUnit())), // TODO: Possible null ptr exception if logical type is not set
+                            true,
+                            timestampEncoder.getTimestamp(decodeInt64Timestamp(max, timestampTypeAnnotation.getUnit())),
+                            true));
+                }
+                return Domain.create(ValueSet.ofRanges(ranges), hasNullValue);
             }
-            return Domain.multipleValues(type, values, hasNullValue);
         }
 
         return Domain.create(ValueSet.all(type), hasNullValue);
@@ -386,7 +433,7 @@ public class TupleDomainParquetPredicate
                 max.add(converterFunction.apply(columnIndex.getMaxValues().get(i)));
             }
 
-            return getDomain(type, min, max, hasNullValue, timeZone);
+            return getDomain(descriptor, type, min, max, hasNullValue, timeZone);
         }
         catch (Exception e) {
             throw corruptionException(columnName, id, columnIndex, e);
@@ -430,7 +477,7 @@ public class TupleDomainParquetPredicate
         }
 
         // TODO: when min == max (i.e., singleton ranges, the construction of Domains can be done more efficiently
-        return getDomain(type, values, values, true, timeZone);
+        return getDomain(columnDescriptor, type, values, values, true, timeZone);
     }
 
     private static ParquetCorruptionException corruptionException(String column, ParquetDataSourceId id, Statistics<?> statistics, Exception cause)
@@ -490,7 +537,9 @@ public class TupleDomainParquetPredicate
                 continue;
             }
 
-            FilterPredicate columnFilter = FilterApi.userDefined(FilterApi.intColumn(ColumnPath.get(column.getPath()).toDotString()), new DomainUserDefinedPredicate(domain, timeZone));
+            FilterPredicate columnFilter = FilterApi.userDefined(
+                    FilterApi.intColumn(ColumnPath.get(column.getPath()).toDotString()),
+                    new DomainUserDefinedPredicate(column, domain, timeZone));
             if (filter == null) {
                 filter = columnFilter;
             }
@@ -509,11 +558,13 @@ public class TupleDomainParquetPredicate
             extends UserDefinedPredicate<T>
             implements Serializable // Required by argument of FilterApi.userDefined call
     {
+        private final ColumnDescriptor columnDescriptor;
         private final Domain columnDomain;
         private final DateTimeZone timeZone;
 
-        public DomainUserDefinedPredicate(Domain domain, DateTimeZone timeZone)
+        public DomainUserDefinedPredicate(ColumnDescriptor columnDescriptor, Domain domain, DateTimeZone timeZone)
         {
+            this.columnDescriptor = requireNonNull(columnDescriptor, "columnDescriptor is null");
             this.columnDomain = domain;
             this.timeZone = timeZone;
         }
@@ -535,7 +586,13 @@ public class TupleDomainParquetPredicate
                 return false;
             }
 
-            Domain domain = getDomain(columnDomain.getType(), ImmutableList.of(statistic.getMin()), ImmutableList.of(statistic.getMax()), true, timeZone);
+            Domain domain = getDomain(
+                    columnDescriptor,
+                    columnDomain.getType(),
+                    ImmutableList.of(statistic.getMin()),
+                    ImmutableList.of(statistic.getMax()),
+                    true,
+                    timeZone);
             return !columnDomain.overlaps(domain);
         }
 

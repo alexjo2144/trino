@@ -19,12 +19,18 @@ import com.google.common.primitives.Longs;
 import io.trino.plugin.base.type.DecodedTimestamp;
 import io.trino.spi.TrinoException;
 import org.apache.parquet.io.api.Binary;
+import org.apache.parquet.schema.LogicalTypeAnnotation;
 
 import static com.google.common.base.Verify.verify;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
+import static io.trino.spi.type.Timestamps.MICROSECONDS_PER_SECOND;
+import static io.trino.spi.type.Timestamps.MILLISECONDS_PER_SECOND;
 import static io.trino.spi.type.Timestamps.NANOSECONDS_PER_DAY;
+import static io.trino.spi.type.Timestamps.NANOSECONDS_PER_MICROSECOND;
+import static io.trino.spi.type.Timestamps.NANOSECONDS_PER_MILLISECOND;
 import static io.trino.spi.type.Timestamps.NANOSECONDS_PER_SECOND;
 import static io.trino.spi.type.Timestamps.SECONDS_PER_DAY;
+import static java.lang.StrictMath.toIntExact;
 
 /**
  * Utility class for decoding INT96 encoded parquet timestamp to timestamp millis in GMT.
@@ -56,5 +62,34 @@ public final class ParquetTimestampUtils
 
         long epochSeconds = (julianDay - JULIAN_EPOCH_OFFSET_DAYS) * SECONDS_PER_DAY + timeOfDayNanos / NANOSECONDS_PER_SECOND;
         return new DecodedTimestamp(epochSeconds, (int) (timeOfDayNanos % NANOSECONDS_PER_SECOND));
+    }
+
+    public static DecodedTimestamp decodeInt64Timestamp(long timestamp, LogicalTypeAnnotation.TimeUnit precision)
+    {
+        long toSecondsConversion;
+        long toNanosConversion;
+        switch (precision) {
+            case MILLIS:
+                toSecondsConversion = MILLISECONDS_PER_SECOND;
+                toNanosConversion = NANOSECONDS_PER_MILLISECOND;
+                break;
+            case MICROS:
+                toSecondsConversion = MICROSECONDS_PER_SECOND;
+                toNanosConversion = NANOSECONDS_PER_MICROSECOND;
+                break;
+            case NANOS:
+                toSecondsConversion = NANOSECONDS_PER_SECOND;
+                toNanosConversion = 1;
+                break;
+            default:
+                throw new TrinoException(NOT_SUPPORTED, "Unsupported Parquet timestamp time unit " + precision);
+        }
+        long epochSeconds = (timestamp / toSecondsConversion) + (timestamp < 0 ? -1 : 0);
+        long fractionalSecond = timestamp < 0 ?
+                toSecondsConversion + (timestamp % toSecondsConversion) :
+                timestamp % toSecondsConversion;
+        int nanosOfSecond = toIntExact(fractionalSecond * toNanosConversion);
+
+        return new DecodedTimestamp(epochSeconds, nanosOfSecond);
     }
 }

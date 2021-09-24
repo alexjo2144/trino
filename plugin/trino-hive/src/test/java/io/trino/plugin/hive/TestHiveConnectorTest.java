@@ -4477,8 +4477,22 @@ public class TestHiveConnectorTest
     @Test(dataProvider = "timestampPrecisionAndValues")
     public void testParquetTimestampPredicatePushdown(HiveTimestampPrecision timestampPrecision, LocalDateTime value)
     {
-        Session session = withTimestampPrecision(getSession(), timestampPrecision);
-        assertUpdate("DROP TABLE IF EXISTS test_parquet_timestamp_predicate_pushdown");
+        runTestParquetTimestampPredicatePushdown(getSession(), timestampPrecision, value);
+    }
+
+    @Test(dataProvider = "timestampPrecisionAndValues")
+    public void testParquetTimestampPredicatePushdownOptimizedWriter(HiveTimestampPrecision timestampPrecision, LocalDateTime value)
+    {
+        Session session = Session.builder(getSession())
+                .setCatalogSessionProperty("hive", "experimental_parquet_optimized_writer_enabled", "true")
+                .build();
+        runTestParquetTimestampPredicatePushdown(session, timestampPrecision, value);
+    }
+
+    private void runTestParquetTimestampPredicatePushdown(Session baseSession, HiveTimestampPrecision timestampPrecision, LocalDateTime value)
+    {
+        Session session = withTimestampPrecision(baseSession, timestampPrecision);
+        assertUpdate("DROP TABLE IF EXISTS test_parquet_timestamp_predicate_pushdown"); // TODO: randomTableSuffix now that this might run in parallel
         assertUpdate("CREATE TABLE test_parquet_timestamp_predicate_pushdown (t TIMESTAMP) WITH (format = 'PARQUET')");
         assertUpdate(session, format("INSERT INTO test_parquet_timestamp_predicate_pushdown VALUES (%s)", formatTimestamp(value)), 1);
         assertQuery(session, "SELECT * FROM test_parquet_timestamp_predicate_pushdown", format("VALUES (%s)", formatTimestamp(value)));
