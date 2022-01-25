@@ -94,7 +94,7 @@ public final class IcebergQueryRunner
             connectorProperties.putIfAbsent("hive.metastore.catalog.dir", dataDir.toString());
         }
         else {
-            connectorProperties.putIfAbsent("iceberg.default-schema-location", dataDir.toString());
+            connectorProperties.putIfAbsent("hive.metastore.glue.default-warehouse-dir", dataDir.toString());
         }
 
         queryRunner.createCatalog(ICEBERG_CATALOG, "iceberg", connectorProperties);

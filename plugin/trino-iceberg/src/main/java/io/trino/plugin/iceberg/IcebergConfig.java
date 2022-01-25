@@ -22,8 +22,6 @@ import org.apache.iceberg.FileFormat;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 
-import java.util.Optional;
-
 import static io.trino.plugin.hive.HiveCompressionCodec.ZSTD;
 import static io.trino.plugin.iceberg.CatalogType.HIVE_METASTORE;
 import static io.trino.plugin.iceberg.IcebergFileFormat.ORC;
@@ -40,7 +38,6 @@ public class IcebergConfig
     private Duration dynamicFilteringWaitTimeout = new Duration(0, SECONDS);
     private boolean tableStatisticsEnabled = true;
     private boolean projectionPushdownEnabled = true;
-    private Optional<String> defaultSchemaLocation = Optional.empty();
 
     public CatalogType getCatalogType()
     {
@@ -168,20 +165,6 @@ public class IcebergConfig
     public IcebergConfig setProjectionPushdownEnabled(boolean projectionPushdownEnabled)
     {
         this.projectionPushdownEnabled = projectionPushdownEnabled;
-        return this;
-    }
-
-    @NotNull
-    public Optional<String> getDefaultSchemaLocation()
-    {
-        return defaultSchemaLocation;
-    }
-
-    @Config("iceberg.default-schema-location")
-    @ConfigDescription("The default base location to create a new schema")
-    public IcebergConfig setDefaultSchemaLocation(String defaultSchemaLocation)
-    {
-        this.defaultSchemaLocation = Optional.ofNullable(defaultSchemaLocation);
         return this;
     }
 }
