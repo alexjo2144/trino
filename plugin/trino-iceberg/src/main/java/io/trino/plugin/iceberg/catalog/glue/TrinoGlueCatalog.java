@@ -150,14 +150,13 @@ public class TrinoGlueCatalog
     }
 
     @Override
-    public boolean dropNamespace(ConnectorSession session, String namespace)
+    public void dropNamespace(ConnectorSession session, String namespace)
     {
         try {
             DeleteDatabaseRequest deleteDatabaseRequest = new DeleteDatabaseRequest()
                     .withName(namespace);
             catalogId.ifPresent(deleteDatabaseRequest::setCatalogId);
             stats.getDropDatabase().call(() -> glueClient.deleteDatabase(deleteDatabaseRequest));
-            return true;
         }
         catch (EntityNotFoundException e) {
             throw new SchemaNotFoundException(namespace);
@@ -297,7 +296,7 @@ public class TrinoGlueCatalog
     }
 
     @Override
-    public boolean dropTable(ConnectorSession session, SchemaTableName schemaTableName, boolean purgeData)
+    public void dropTable(ConnectorSession session, SchemaTableName schemaTableName, boolean purgeData)
     {
         Table table = loadTable(session, schemaTableName);
         validateTableCanBeDropped(table, schemaTableName);
@@ -322,7 +321,6 @@ public class TrinoGlueCatalog
                 log.warn(e, "Failed to delete path: " + tableLocation);
             }
         }
-        return true;
     }
 
     @Override
