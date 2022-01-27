@@ -57,12 +57,12 @@ public class GlueTableOperations
 
     private final AWSGlueAsync glueClient;
     private final GlueMetastoreStats stats;
-    private final String catalogId;
+    private final Optional<String> catalogId;
 
     protected GlueTableOperations(
             AWSGlueAsync glueClient,
             GlueMetastoreStats stats,
-            String catalogId,
+            Optional<String> catalogId,
             FileIO fileIo,
             ConnectorSession session,
             String database,
@@ -73,29 +73,27 @@ public class GlueTableOperations
         super(fileIo, session, database, table, owner, location);
         this.glueClient = requireNonNull(glueClient, "glueClient is null");
         this.stats = requireNonNull(stats, "stats is null");
-        this.catalogId = catalogId;
+        this.catalogId = requireNonNull(catalogId, "catalogId is null");
     }
 
     @Override
     protected String getRefreshedLocation()
     {
-        return stats.getGetTable().call(() -> {
-            Table table = getTable();
+        Table table = getTable();
 
-            if (isPrestoView(table) && isHiveOrPrestoView(table)) {
-                // this is a Presto Hive view, hence not a table
-                throw new TableNotFoundException(getSchemaTableName());
-            }
-            if (!isIcebergTable(table)) {
-                throw new UnknownTableTypeException(getSchemaTableName());
-            }
+        if (isPrestoView(table) && isHiveOrPrestoView(table)) {
+            // this is a Presto Hive view, hence not a table
+            throw new TableNotFoundException(getSchemaTableName());
+        }
+        if (!isIcebergTable(table)) {
+            throw new UnknownTableTypeException(getSchemaTableName());
+        }
 
-            String metadataLocation = table.getParameters().get(METADATA_LOCATION);
-            if (metadataLocation == null) {
-                throw new TrinoException(ICEBERG_INVALID_METADATA, format("Table is missing [%s] property: %s", METADATA_LOCATION, getSchemaTableName()));
-            }
-            return metadataLocation;
-        });
+        String metadataLocation = table.getParameters().get(METADATA_LOCATION);
+        if (metadataLocation == null) {
+            throw new TrinoException(ICEBERG_INVALID_METADATA, format("Table is missing [%s] property: %s", METADATA_LOCATION, getSchemaTableName()));
+        }
+        return metadataLocation;
     }
 
     @Override
@@ -113,13 +111,11 @@ public class GlueTableOperations
 
         boolean succeeded = false;
         try {
-            stats.getCreateTable().call(() -> {
-                glueClient.createTable(new CreateTableRequest()
-                        .withCatalogId(catalogId)
-                        .withDatabaseName(database)
-                        .withTableInput(tableInput));
-                return null;
-            });
+            CreateTableRequest createTableRequest = new CreateTableRequest()
+                    .withDatabaseName(database)
+                    .withTableInput(tableInput);
+            catalogId.ifPresent(createTableRequest::setCatalogId);
+            stats.getCreateTable().call(() -> glueClient.createTable(createTableRequest));
             succeeded = true;
         }
         catch (ConcurrentModificationException e) {
@@ -174,13 +170,11 @@ public class GlueTableOperations
                     .withViewExpandedText(table.getViewExpandedText())
                     .withViewOriginalText(table.getViewOriginalText());
 
-            stats.getUpdateTable().call(() -> {
-                glueClient.updateTable(new UpdateTableRequest()
-                        .withCatalogId(catalogId)
-                        .withDatabaseName(database)
-                        .withTableInput(tableInputToUpdate));
-                return null;
-            });
+            UpdateTableRequest updateTableRequest = new UpdateTableRequest()
+                    .withDatabaseName(database)
+                    .withTableInput(tableInputToUpdate);
+            catalogId.ifPresent(updateTableRequest::setCatalogId);
+            stats.getUpdateTable().call(() -> glueClient.updateTable(updateTableRequest));
             succeeded = true;
         }
         catch (ConcurrentModificationException | CommitFailedException e) {
@@ -211,10 +205,11 @@ public class GlueTableOperations
     private Table getTable()
     {
         try {
-            return glueClient.getTable(new GetTableRequest()
-                    .withCatalogId(catalogId)
+            GetTableRequest getTableRequest = new GetTableRequest()
                     .withDatabaseName(database)
-                    .withName(tableName)).getTable();
+                    .withName(tableName);
+            catalogId.ifPresent(getTableRequest::setCatalogId);
+            return stats.getGetTable().call(() -> glueClient.getTable(getTableRequest).getTable());
         }
         catch (EntityNotFoundException e) {
             throw new TableNotFoundException(getSchemaTableName());

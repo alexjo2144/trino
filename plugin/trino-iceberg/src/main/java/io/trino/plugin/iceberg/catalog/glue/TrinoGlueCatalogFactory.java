@@ -37,7 +37,7 @@ public class TrinoGlueCatalogFactory
     private final Optional<String> defaultSchemaLocation;
     private final boolean isUniqueTableLocation;
     private final AWSGlueAsync glueClient;
-    private final String catalogId;
+    private final Optional<String> catalogId;
     private final GlueMetastoreStats stats = new GlueMetastoreStats();
 
     @Inject
@@ -51,7 +51,7 @@ public class TrinoGlueCatalogFactory
         this.tableOperationsProvider = requireNonNull(tableOperationsProvider, "tableOperationsProvider is null");
         requireNonNull(glueConfig, "glueConfig is null");
         this.glueClient = createAsyncGlueClient(glueConfig, Optional.empty(), stats.newRequestMetricsCollector());
-        this.catalogId = glueConfig.getCatalogId().orElse(null);
+        this.catalogId = glueConfig.getCatalogId();
         this.defaultSchemaLocation = glueConfig.getDefaultWarehouseDir();
         requireNonNull(icebergConfig, "icebergConfig is null");
         this.isUniqueTableLocation = icebergConfig.isUniqueTableLocation();
