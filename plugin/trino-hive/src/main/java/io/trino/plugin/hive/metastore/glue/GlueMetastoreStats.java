@@ -151,13 +151,6 @@ public class GlueMetastoreStats
 
     @Managed
     @Nested
-    public GlueMetastoreApiStats getRenameTable()
-    {
-        return renameTable;
-    }
-
-    @Managed
-    @Nested
     public GlueMetastoreApiStats getGetPartitionNames()
     {
         return getPartitionNames;

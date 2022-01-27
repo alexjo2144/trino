@@ -35,7 +35,6 @@ import com.google.common.collect.ImmutableMap;
 import io.airlift.log.Logger;
 import io.trino.plugin.hive.HdfsEnvironment;
 import io.trino.plugin.hive.SchemaAlreadyExistsException;
-import io.trino.plugin.hive.TableAlreadyExistsException;
 import io.trino.plugin.hive.metastore.glue.GlueMetastoreStats;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperations;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
@@ -46,7 +45,6 @@ import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorViewDefinition;
 import io.trino.spi.connector.SchemaNotFoundException;
 import io.trino.spi.connector.SchemaTableName;
-import io.trino.spi.connector.TableNotFoundException;
 import io.trino.spi.security.TrinoPrincipal;
 import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.BaseTable;
@@ -61,7 +59,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.plugin.hive.HiveErrorCode.HIVE_DATABASE_LOCATION_ERROR;
@@ -134,15 +131,15 @@ public class TrinoGlueCatalog
         catalogId.ifPresent(getDatabaseRequest::setCatalogId);
         try {
             return stats.getGetAllDatabases().call(() ->
-                getPaginatedResults(
-                        glueClient::getDatabases,
-                        getDatabaseRequest,
-                        GetDatabasesRequest::setNextToken,
-                        GetDatabasesResult::getNextToken)
-                        .map(GetDatabasesResult::getDatabaseList)
-                        .flatMap(List::stream)
-                        .map(com.amazonaws.services.glue.model.Database::getName)
-                        .collect(toImmutableList()));
+                    getPaginatedResults(
+                            glueClient::getDatabases,
+                            getDatabaseRequest,
+                            GetDatabasesRequest::setNextToken,
+                            GetDatabasesResult::getNextToken)
+                            .map(GetDatabasesResult::getDatabaseList)
+                            .flatMap(List::stream)
+                            .map(com.amazonaws.services.glue.model.Database::getName)
+                            .collect(toImmutableList()));
         }
         catch (AmazonServiceException e) {
             throw new TrinoException(ICEBERG_CATALOG_ERROR, e);
@@ -248,13 +245,13 @@ public class TrinoGlueCatalog
                             GetTablesRequest getTablesRequest = new GetTablesRequest().withDatabaseName(glueNamespace);
                             catalogId.ifPresent(getTablesRequest::setCatalogId);
                             return getPaginatedResults(
-                                        glueClient::getTables,
-                                        getTablesRequest,
-                                        GetTablesRequest::setNextToken,
-                                        GetTablesResult::getNextToken)
-                                        .map(GetTablesResult::getTableList)
-                                        .flatMap(List::stream)
-                                        .map(table -> new SchemaTableName(glueNamespace, table.getName()));
+                                    glueClient::getTables,
+                                    getTablesRequest,
+                                    GetTablesRequest::setNextToken,
+                                    GetTablesResult::getNextToken)
+                                    .map(GetTablesResult::getTableList)
+                                    .flatMap(List::stream)
+                                    .map(table -> new SchemaTableName(glueNamespace, table.getName()));
                         })
                         .collect(toImmutableList());
             });
@@ -301,11 +298,7 @@ public class TrinoGlueCatalog
         Table table = loadTable(session, schemaTableName);
         validateTableCanBeDropped(table, schemaTableName);
         try {
-            DeleteTableRequest deleteTableRequest = new DeleteTableRequest()
-                    .withDatabaseName(schemaTableName.getSchemaName())
-                    .withName(schemaTableName.getTableName());
-            catalogId.ifPresent(deleteTableRequest::setCatalogId);
-            stats.getDropTable().call(() -> glueClient.deleteTable(deleteTableRequest));
+            deleteTable(schemaTableName.getSchemaName(), schemaTableName.getTableName());
         }
         catch (AmazonServiceException e) {
             throw new TrinoException(HIVE_METASTORE_ERROR, e);
@@ -324,78 +317,72 @@ public class TrinoGlueCatalog
     }
 
     @Override
-    public Transaction newCreateTableTransaction(ConnectorSession session, SchemaTableName schemaTableName, Schema schema, PartitionSpec partitionSpec,
-            String location, Map<String, String> properties)
+    public Transaction newCreateTableTransaction(
+            ConnectorSession session,
+            SchemaTableName schemaTableName,
+            Schema schema,
+            PartitionSpec partitionSpec,
+            String location,
+            Map<String, String> properties)
     {
         TableMetadata metadata = newTableMetadata(schema, partitionSpec, location, properties);
-        TableOperations ops = tableOperationsProvider.createTableOperations(
+        TableOperations tableOperations = tableOperationsProvider.createTableOperations(
                 this,
                 session,
                 schemaTableName.getSchemaName(),
                 schemaTableName.getTableName(),
                 Optional.of(session.getUser()),
                 Optional.of(location));
-        return createTableTransaction(schemaTableName.toString(), ops, metadata);
+        return createTableTransaction(schemaTableName.toString(), tableOperations, metadata);
     }
 
     @Override
     public void renameTable(ConnectorSession session, SchemaTableName from, SchemaTableName to)
     {
-        AtomicBoolean newTableCreated = new AtomicBoolean(false);
-        AtomicBoolean oldTableDeleted = new AtomicBoolean(false);
+        boolean newTableCreated = false;
+        boolean oldTableDeleted = false;
         try {
             GetTableRequest getTableRequest = new GetTableRequest()
                     .withDatabaseName(from.getSchemaName())
                     .withName(from.getTableName());
             catalogId.ifPresent(getTableRequest::setCatalogId);
-            stats.getRenameTable().call(() -> {
-                com.amazonaws.services.glue.model.Table table = glueClient.getTable(getTableRequest).getTable();
-                TableInput tableInput = new TableInput()
-                        .withName(to.getTableName())
-                        .withTableType(table.getTableType())
-                        .withOwner(table.getOwner())
-                        .withParameters(table.getParameters())
-                        .withDescription(table.getDescription())
-                        .withTargetTable(table.getTargetTable())
-                        .withLastAccessTime(table.getLastAccessTime())
-                        .withLastAnalyzedTime(table.getLastAnalyzedTime())
-                        .withPartitionKeys(table.getPartitionKeys())
-                        .withRetention(table.getRetention())
-                        .withStorageDescriptor(table.getStorageDescriptor())
-                        .withViewExpandedText(table.getViewExpandedText())
-                        .withViewOriginalText(table.getViewOriginalText());
+            com.amazonaws.services.glue.model.Table table = stats.getGetTable().call(() -> glueClient.getTable(getTableRequest).getTable());
+            TableInput tableInput = new TableInput()
+                    .withName(to.getTableName())
+                    .withTableType(table.getTableType())
+                    .withOwner(table.getOwner())
+                    .withParameters(table.getParameters());
 
-                CreateTableRequest createTableRequest = new CreateTableRequest()
-                        .withDatabaseName(to.getSchemaName())
-                        .withTableInput(tableInput);
-                catalogId.ifPresent(createTableRequest::setCatalogId);
-                glueClient.createTable(createTableRequest);
-                newTableCreated.set(true);
+            CreateTableRequest createTableRequest = new CreateTableRequest()
+                    .withDatabaseName(to.getSchemaName())
+                    .withTableInput(tableInput);
+            catalogId.ifPresent(createTableRequest::setCatalogId);
+            stats.getCreateTable().call(() -> glueClient.createTable(createTableRequest));
+            newTableCreated = true;
 
-                DeleteTableRequest deleteTableRequest = new DeleteTableRequest()
-                        .withDatabaseName(from.getSchemaName())
-                        .withName(from.getTableName());
-                catalogId.ifPresent(deleteTableRequest::setCatalogId);
-                glueClient.deleteTable(deleteTableRequest);
-                oldTableDeleted.set(true);
-                return null;
-            });
+            deleteTable(from.getSchemaName(), from.getTableName());
+            oldTableDeleted = true;
         }
-        catch (EntityNotFoundException e) {
-            throw new TableNotFoundException(from);
-        }
-        catch (AlreadyExistsException e) {
-            throw new TableAlreadyExistsException(to);
-        }
-        finally {
-            if (newTableCreated.get() && !oldTableDeleted.get()) {
-                DeleteTableRequest deleteNewTableRequest = new DeleteTableRequest()
-                        .withDatabaseName(to.getSchemaName())
-                        .withName(to.getTableName());
-                catalogId.ifPresent(deleteNewTableRequest::setCatalogId);
-                glueClient.deleteTable(deleteNewTableRequest);
+        catch (Exception e) {
+            if (newTableCreated && !oldTableDeleted) {
+                try {
+                    deleteTable(to.getSchemaName(), to.getTableName());
+                }
+                catch (Exception cleanupException) {
+                    e.addSuppressed(cleanupException);
+                }
             }
+            throw e;
         }
+    }
+
+    private void deleteTable(String schema, String table)
+    {
+        DeleteTableRequest deleteNewTableRequest = new DeleteTableRequest()
+                .withDatabaseName(schema)
+                .withName(table);
+        catalogId.ifPresent(deleteNewTableRequest::setCatalogId);
+        stats.getDropTable().call(() -> glueClient.deleteTable(deleteNewTableRequest));
     }
 
     @Override
@@ -416,22 +403,25 @@ public class TrinoGlueCatalog
         GetDatabaseRequest getDatabaseRequest = new GetDatabaseRequest()
                 .withName(schemaTableName.getSchemaName());
         catalogId.ifPresent(getDatabaseRequest::setCatalogId);
-        String dbLocation = stats.getGetDatabase().call(() ->
+        String databaseLocation = stats.getGetDatabase().call(() ->
                 glueClient.getDatabase(getDatabaseRequest)
                         .getDatabase()
                         .getLocationUri());
 
         String location;
-        if (dbLocation == null) {
+        if (databaseLocation == null) {
             if (defaultSchemaLocation.isEmpty()) {
-                throw new TrinoException(HIVE_DATABASE_LOCATION_ERROR, format("Database '%s' location cannot be determined, " +
-                        "please either set 'location' when creating the database, or set 'iceberg.catalog.warehouse' " +
-                        "to allow a default location at '<warehousePath>/<databaseName>.db'", schemaTableName.getSchemaName()));
+                throw new TrinoException(
+                        HIVE_DATABASE_LOCATION_ERROR,
+                        format("Schema '%s' location cannot be determined. " +
+                                        "Either set the 'location' property when creating the schema, or set the 'hive.metastore.glue.default-warehouse-dir' " +
+                                        "config option.",
+                                schemaTableName.getSchemaName()));
             }
             location = format("%s/%s.db/%s", defaultSchemaLocation.get(), schemaTableName.getSchemaName(), schemaTableName.getTableName());
         }
         else {
-            location = format("%s/%s", dbLocation, schemaTableName.getTableName());
+            location = format("%s/%s", databaseLocation, schemaTableName.getTableName());
         }
 
         if (isUniqueTableLocation) {
