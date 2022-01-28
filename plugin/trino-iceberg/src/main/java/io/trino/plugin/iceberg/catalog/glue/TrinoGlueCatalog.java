@@ -225,13 +225,13 @@ public class TrinoGlueCatalog
     @Override
     public void setNamespacePrincipal(ConnectorSession session, String namespace, TrinoPrincipal principal)
     {
-        throw new TrinoException(NOT_SUPPORTED, "setNamespacePrincipal is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "setNamespacePrincipal is not supported for Iceberg Glue catalogs");
     }
 
     @Override
     public void renameNamespace(ConnectorSession session, String source, String target)
     {
-        throw new TrinoException(NOT_SUPPORTED, "renameNamespace is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "renameNamespace is not supported for Iceberg Glue catalogs");
     }
 
     @Override
@@ -369,7 +369,9 @@ public class TrinoGlueCatalog
                     deleteTable(to.getSchemaName(), to.getTableName());
                 }
                 catch (Exception cleanupException) {
-                    e.addSuppressed(cleanupException);
+                    if (!cleanupException.equals(e)) {
+                        e.addSuppressed(cleanupException);
+                    }
                 }
             }
             throw e;
@@ -433,31 +435,31 @@ public class TrinoGlueCatalog
     @Override
     public void setTablePrincipal(ConnectorSession session, SchemaTableName schemaTableName, TrinoPrincipal principal)
     {
-        throw new TrinoException(NOT_SUPPORTED, "setTablePrincipal is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "setTablePrincipal is not supported for Iceberg Glue catalogs");
     }
 
     @Override
     public void createView(ConnectorSession session, SchemaTableName schemaViewName, ConnectorViewDefinition definition, boolean replace)
     {
-        throw new TrinoException(NOT_SUPPORTED, "createView is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "createView is not supported for Iceberg Glue catalogs");
     }
 
     @Override
     public void renameView(ConnectorSession session, SchemaTableName source, SchemaTableName target)
     {
-        throw new TrinoException(NOT_SUPPORTED, "renameView is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "renameView is not supported for Iceberg Glue catalogs");
     }
 
     @Override
     public void setViewPrincipal(ConnectorSession session, SchemaTableName schemaViewName, TrinoPrincipal principal)
     {
-        throw new TrinoException(NOT_SUPPORTED, "setViewPrincipal is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "setViewPrincipal is not supported for Iceberg Glue catalogs");
     }
 
     @Override
     public void dropView(ConnectorSession session, SchemaTableName schemaViewName)
     {
-        throw new TrinoException(NOT_SUPPORTED, "dropView is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "dropView is not supported for Iceberg Glue catalogs");
     }
 
     @Override
@@ -488,13 +490,13 @@ public class TrinoGlueCatalog
     public void createMaterializedView(ConnectorSession session, SchemaTableName schemaViewName, ConnectorMaterializedViewDefinition definition,
             boolean replace, boolean ignoreExisting)
     {
-        throw new TrinoException(NOT_SUPPORTED, "createMaterializedView is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "createMaterializedView is not supported for Iceberg Glue catalogs");
     }
 
     @Override
     public void dropMaterializedView(ConnectorSession session, SchemaTableName schemaViewName)
     {
-        throw new TrinoException(NOT_SUPPORTED, "dropMaterializedView is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "dropMaterializedView is not supported for Iceberg Glue catalogs");
     }
 
     @Override
@@ -506,6 +508,6 @@ public class TrinoGlueCatalog
     @Override
     public void renameMaterializedView(ConnectorSession session, SchemaTableName source, SchemaTableName target)
     {
-        throw new TrinoException(NOT_SUPPORTED, "renameMaterializedView is not supported by Iceberg Glue catalog");
+        throw new TrinoException(NOT_SUPPORTED, "renameMaterializedView is not supported for Iceberg Glue catalogs");
     }
 }

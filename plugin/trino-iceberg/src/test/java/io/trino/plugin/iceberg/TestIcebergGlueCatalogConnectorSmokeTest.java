@@ -37,9 +37,7 @@ public class TestIcebergGlueCatalogConnectorSmokeTest
     {
         return createIcebergQueryRunner(
                 ImmutableMap.of(),
-                ImmutableMap.of(
-                        "iceberg.file-format", "orc",
-                        "iceberg.catalog.type", "glue"),
+                ImmutableMap.of("iceberg.catalog.type", "glue"),
                 REQUIRED_TPCH_TABLES);
     }
 
@@ -93,7 +91,7 @@ public class TestIcebergGlueCatalogConnectorSmokeTest
     public void testView()
     {
         assertThatThrownBy(super::testView)
-                .hasStackTraceContaining("createView is not supported by Iceberg Glue catalog");
+                .hasStackTraceContaining("createView is not supported for Iceberg Glue catalogs");
     }
 
     @Test
@@ -101,7 +99,7 @@ public class TestIcebergGlueCatalogConnectorSmokeTest
     public void testMaterializedView()
     {
         assertThatThrownBy(super::testMaterializedView)
-                .hasStackTraceContaining("createMaterializedView is not supported by Iceberg Glue catalog");
+                .hasStackTraceContaining("createMaterializedView is not supported for Iceberg Glue catalogs");
     }
 
     @Test
@@ -109,6 +107,6 @@ public class TestIcebergGlueCatalogConnectorSmokeTest
     public void testRenameSchema()
     {
         assertThatThrownBy(super::testRenameSchema)
-                .hasStackTraceContaining("renameNamespace is not supported by Iceberg Glue catalog");
+                .hasStackTraceContaining("renameNamespace is not supported for Iceberg Glue catalogs");
     }
 }

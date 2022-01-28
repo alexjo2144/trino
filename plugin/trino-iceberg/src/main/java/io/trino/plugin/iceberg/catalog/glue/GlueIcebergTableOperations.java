@@ -14,8 +14,6 @@
 package io.trino.plugin.iceberg.catalog.glue;
 
 import com.amazonaws.services.glue.AWSGlueAsync;
-import com.amazonaws.services.glue.model.AlreadyExistsException;
-import com.amazonaws.services.glue.model.ConcurrentModificationException;
 import com.amazonaws.services.glue.model.CreateTableRequest;
 import com.amazonaws.services.glue.model.EntityNotFoundException;
 import com.amazonaws.services.glue.model.GetTableRequest;
@@ -24,7 +22,6 @@ import com.amazonaws.services.glue.model.TableInput;
 import com.amazonaws.services.glue.model.UpdateTableRequest;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.log.Logger;
-import io.trino.plugin.hive.TableAlreadyExistsException;
 import io.trino.plugin.hive.metastore.glue.GlueMetastoreStats;
 import io.trino.plugin.iceberg.UnknownTableTypeException;
 import io.trino.plugin.iceberg.catalog.AbstractIcebergTableOperations;
@@ -40,8 +37,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Verify.verify;
 import static io.trino.plugin.hive.ViewReaderUtil.PRESTO_VIEW_FLAG;
-import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_COMMIT_ERROR;
 import static io.trino.plugin.iceberg.IcebergErrorCode.ICEBERG_INVALID_METADATA;
 import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
@@ -50,16 +47,16 @@ import static org.apache.hadoop.hive.metastore.TableType.EXTERNAL_TABLE;
 import static org.apache.iceberg.BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE;
 import static org.apache.iceberg.BaseMetastoreTableOperations.TABLE_TYPE_PROP;
 
-public class GlueTableOperations
+public class GlueIcebergTableOperations
         extends AbstractIcebergTableOperations
 {
-    private static final Logger log = Logger.get(GlueTableOperations.class);
+    private static final Logger log = Logger.get(GlueIcebergTableOperations.class);
 
     private final AWSGlueAsync glueClient;
     private final GlueMetastoreStats stats;
     private final Optional<String> catalogId;
 
-    protected GlueTableOperations(
+    protected GlueIcebergTableOperations(
             AWSGlueAsync glueClient,
             GlueMetastoreStats stats,
             Optional<String> catalogId,
@@ -99,7 +96,8 @@ public class GlueTableOperations
     @Override
     protected void commitNewTable(TableMetadata metadata)
     {
-        String newMetadataLocation = writeNewMetadata(metadata, version + 1);
+        verify(version == -1, "commitNewTable called on a table which already exists");
+        String newMetadataLocation = writeNewMetadata(metadata, 0);
         Map<String, String> parameters = ImmutableMap.of(
                 TABLE_TYPE_PROP, ICEBERG_TABLE_TYPE_VALUE.toUpperCase(ENGLISH),
                 METADATA_LOCATION, newMetadataLocation);
@@ -109,26 +107,23 @@ public class GlueTableOperations
                 .withOwner(owner.orElse(null))
                 .withParameters(parameters);
 
-        boolean succeeded = false;
         try {
             CreateTableRequest createTableRequest = new CreateTableRequest()
                     .withDatabaseName(database)
                     .withTableInput(tableInput);
             catalogId.ifPresent(createTableRequest::setCatalogId);
             stats.getCreateTable().call(() -> glueClient.createTable(createTableRequest));
-            succeeded = true;
         }
-        catch (ConcurrentModificationException e) {
-            throw new TrinoException(ICEBERG_COMMIT_ERROR, format("Cannot commit %s because Glue detected concurrent update", getSchemaTableName()), e);
-        }
-        catch (AlreadyExistsException e) {
-            throw new TableAlreadyExistsException(getSchemaTableName());
-        }
-        catch (RuntimeException e) {
-            throw new TrinoException(ICEBERG_COMMIT_ERROR, format("Cannot commit %s due to unexpected exception", getSchemaTableName()), e);
-        }
-        finally {
-            cleanupMetadataLocation(!succeeded, newMetadataLocation);
+        catch (Exception e) {
+            try {
+                cleanupMetadataLocation(newMetadataLocation);
+            }
+            catch (Exception cleanupException) {
+                if (!cleanupException.equals(e)) {
+                    e.addSuppressed(cleanupException);
+                }
+                throw e;
+            }
         }
 
         shouldRefresh = true;
@@ -148,7 +143,6 @@ public class GlueTableOperations
                 .withOwner(owner.orElse(null))
                 .withParameters(parameters);
 
-        boolean succeeded = false;
         try {
             Table table = getTable();
 
@@ -175,15 +169,18 @@ public class GlueTableOperations
                     .withTableInput(tableInputToUpdate);
             catalogId.ifPresent(updateTableRequest::setCatalogId);
             stats.getUpdateTable().call(() -> glueClient.updateTable(updateTableRequest));
-            succeeded = true;
         }
-        catch (ConcurrentModificationException | CommitFailedException e) {
-            throw new TrinoException(ICEBERG_COMMIT_ERROR, format("Cannot commit %s because of concurrent update", getSchemaTableName()), e);
+        catch (Exception e) {
+            try {
+                cleanupMetadataLocation(newMetadataLocation);
+            }
+            catch (Exception cleanupException) {
+                if (!cleanupException.equals(e)) {
+                    e.addSuppressed(cleanupException);
+                }
+            }
+            throw e;
         }
-        finally {
-            cleanupMetadataLocation(!succeeded, newMetadataLocation);
-        }
-
         shouldRefresh = true;
     }
 
@@ -216,16 +213,14 @@ public class GlueTableOperations
         }
     }
 
-    private void cleanupMetadataLocation(boolean shouldCleanup, String metadataLocation)
+    private void cleanupMetadataLocation(String metadataLocation)
     {
-        if (shouldCleanup) {
-            try {
-                io().deleteFile(metadataLocation);
-            }
-            catch (RuntimeException ex) {
-                log.error(ex, "Fail to cleanup metadata file at " + metadataLocation);
-                throw ex;
-            }
+        try {
+            io().deleteFile(metadataLocation);
+        }
+        catch (RuntimeException e) {
+            log.error(e, "Fail to cleanup metadata file at " + metadataLocation);
+            throw e;
         }
     }
 }

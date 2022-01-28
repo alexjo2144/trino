@@ -24,15 +24,17 @@ import javax.inject.Inject;
 
 import java.util.Optional;
 
-public class GlueTableOperationsProvider
+import static java.util.Objects.requireNonNull;
+
+public class GlueIcebergTableOperationsProvider
         implements IcebergTableOperationsProvider
 {
     private final FileIoProvider fileIoProvider;
 
     @Inject
-    public GlueTableOperationsProvider(FileIoProvider fileIoProvider)
+    public GlueIcebergTableOperationsProvider(FileIoProvider fileIoProvider)
     {
-        this.fileIoProvider = fileIoProvider;
+        this.fileIoProvider = requireNonNull(fileIoProvider, "fileIoProvider is null");
     }
 
     @Override
@@ -45,7 +47,7 @@ public class GlueTableOperationsProvider
             Optional<String> location)
     {
         TrinoGlueCatalog glueCatalog = (TrinoGlueCatalog) catalog;
-        return new GlueTableOperations(
+        return new GlueIcebergTableOperations(
                 glueCatalog.getGlueClient(),
                 glueCatalog.getStats(),
                 glueCatalog.getCatalogId(),

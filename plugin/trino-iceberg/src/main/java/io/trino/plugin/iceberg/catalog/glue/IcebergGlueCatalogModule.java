@@ -29,7 +29,7 @@ public class IcebergGlueCatalogModule
     protected void setup(Binder binder)
     {
         configBinder(binder).bindConfig(GlueHiveMetastoreConfig.class);
-        binder.bind(IcebergTableOperationsProvider.class).to(GlueTableOperationsProvider.class).in(Scopes.SINGLETON);
+        binder.bind(IcebergTableOperationsProvider.class).to(GlueIcebergTableOperationsProvider.class).in(Scopes.SINGLETON);
         binder.bind(TrinoCatalogFactory.class).to(TrinoGlueCatalogFactory.class).in(Scopes.SINGLETON);
     }
 }
