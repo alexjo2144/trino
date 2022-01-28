@@ -14,9 +14,7 @@
 package io.trino.plugin.iceberg;
 
 import com.google.common.collect.ImmutableMap;
-import io.trino.testing.BaseConnectorSmokeTest;
 import io.trino.testing.QueryRunner;
-import io.trino.testing.TestingConnectorBehavior;
 import org.testng.annotations.Test;
 
 import static io.trino.plugin.iceberg.IcebergQueryRunner.createIcebergQueryRunner;
@@ -29,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * on ways to set your AWS credentials which will be needed to run this test.
  */
 public class TestIcebergGlueCatalogConnectorSmokeTest
-        extends BaseConnectorSmokeTest
+        extends BaseIcebergConnectorSmokeTest
 {
     @Override
     protected QueryRunner createQueryRunner()
@@ -39,35 +37,6 @@ public class TestIcebergGlueCatalogConnectorSmokeTest
                 ImmutableMap.of(),
                 ImmutableMap.of("iceberg.catalog.type", "glue"),
                 REQUIRED_TPCH_TABLES);
-    }
-
-    @Override
-    protected boolean hasBehavior(TestingConnectorBehavior connectorBehavior)
-    {
-        switch (connectorBehavior) {
-            case SUPPORTS_RENAME_SCHEMA:
-            case SUPPORTS_COMMENT_ON_COLUMN:
-            case SUPPORTS_TOPN_PUSHDOWN:
-            case SUPPORTS_CREATE_VIEW:
-            case SUPPORTS_CREATE_MATERIALIZED_VIEW:
-            case SUPPORTS_RENAME_MATERIALIZED_VIEW:
-            case SUPPORTS_RENAME_MATERIALIZED_VIEW_ACROSS_SCHEMAS:
-                return false;
-
-            case SUPPORTS_DELETE:
-                return true;
-            default:
-                return super.hasBehavior(connectorBehavior);
-        }
-    }
-
-    @Test
-    @Override
-    public void testRowLevelDelete()
-    {
-        // Deletes are covered AbstractTestIcebergConnectorTest
-        assertThatThrownBy(super::testRowLevelDelete)
-                .hasStackTraceContaining("This connector only supports delete where one or more identity-transformed partitions are deleted entirely");
     }
 
     @Test
