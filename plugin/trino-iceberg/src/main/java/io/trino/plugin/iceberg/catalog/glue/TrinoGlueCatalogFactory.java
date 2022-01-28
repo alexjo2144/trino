@@ -21,6 +21,8 @@ import io.trino.plugin.iceberg.IcebergConfig;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.TrinoCatalogFactory;
+import org.weakref.jmx.Flatten;
+import org.weakref.jmx.Managed;
 
 import javax.inject.Inject;
 
@@ -55,6 +57,13 @@ public class TrinoGlueCatalogFactory
         this.defaultSchemaLocation = glueConfig.getDefaultWarehouseDir();
         requireNonNull(icebergConfig, "icebergConfig is null");
         this.isUniqueTableLocation = icebergConfig.isUniqueTableLocation();
+    }
+
+    @Managed
+    @Flatten
+    public GlueMetastoreStats getStats()
+    {
+        return stats;
     }
 
     @Override

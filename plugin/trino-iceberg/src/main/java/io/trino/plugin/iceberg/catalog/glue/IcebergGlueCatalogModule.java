@@ -21,6 +21,7 @@ import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalogFactory;
 
 import static io.airlift.configuration.ConfigBinder.configBinder;
+import static org.weakref.jmx.guice.ExportBinder.newExporter;
 
 public class IcebergGlueCatalogModule
         extends AbstractConfigurationAwareModule
@@ -31,5 +32,6 @@ public class IcebergGlueCatalogModule
         configBinder(binder).bindConfig(GlueHiveMetastoreConfig.class);
         binder.bind(IcebergTableOperationsProvider.class).to(GlueIcebergTableOperationsProvider.class).in(Scopes.SINGLETON);
         binder.bind(TrinoCatalogFactory.class).to(TrinoGlueCatalogFactory.class).in(Scopes.SINGLETON);
+        newExporter(binder).export(TrinoCatalogFactory.class).withGeneratedName();
     }
 }
