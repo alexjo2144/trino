@@ -13,6 +13,7 @@
  */
 package io.trino.plugin.iceberg;
 
+import com.google.inject.Module;
 import io.trino.plugin.hive.metastore.HiveMetastore;
 import io.trino.spi.connector.Connector;
 import io.trino.spi.connector.ConnectorContext;
@@ -30,11 +31,18 @@ public class TestingIcebergConnectorFactory
 {
     private final Optional<HiveMetastore> metastore;
     private final Optional<FileIoProvider> fileIoProvider;
+    private final Optional<Module> module;
 
     public TestingIcebergConnectorFactory(Optional<HiveMetastore> metastore, Optional<FileIoProvider> fileIoProvider)
     {
+        this(metastore, fileIoProvider, Optional.empty());
+    }
+
+    public TestingIcebergConnectorFactory(Optional<HiveMetastore> metastore, Optional<FileIoProvider> fileIoProvider, Optional<Module> module)
+    {
         this.metastore = requireNonNull(metastore, "metastore is null");
         this.fileIoProvider = requireNonNull(fileIoProvider, "fileIoProvider is null");
+        this.module = requireNonNull(module, "module is null");
     }
 
     @Override
@@ -46,6 +54,6 @@ public class TestingIcebergConnectorFactory
     @Override
     public Connector create(String catalogName, Map<String, String> config, ConnectorContext context)
     {
-        return createConnector(catalogName, config, context, EMPTY_MODULE, metastore, fileIoProvider);
+        return createConnector(catalogName, config, context, module.orElse(EMPTY_MODULE), metastore, fileIoProvider);
     }
 }

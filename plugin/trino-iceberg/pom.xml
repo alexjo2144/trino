@@ -298,6 +298,12 @@
 
         <dependency>
             <groupId>io.airlift</groupId>
+            <artifactId>stats</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.airlift</groupId>
             <artifactId>testing</artifactId>
             <scope>test</scope>
         </dependency>
@@ -338,6 +344,7 @@
                                 <exclude>**/TestIcebergGlueCatalogConnectorSmokeTest.java</exclude>
                                 <exclude>**/TestTrinoGlueCatalogTest.java</exclude>
                                 <exclude>**/TestSharedGlueMetastore.java</exclude>
+                                <exclude>**/TestIcebergGlueCatalogAccessOperations.java</exclude>
                             </excludes>
                         </configuration>
                     </plugin>
@@ -402,6 +409,7 @@
                                 <include>**/TestIcebergGlueCatalogConnectorSmokeTest.java</include>
                                 <include>**/TestTrinoGlueCatalogTest.java</include>
                                 <include>**/TestSharedGlueMetastore.java</include>
+                                <include>**/TestIcebergGlueCatalogAccessOperations.java</include>
                             </includes>
                         </configuration>
                     </plugin>
