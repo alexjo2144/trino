@@ -428,6 +428,6 @@ public final class IcebergSessionProperties
 
     public static boolean getAsyncSplitFiltering(ConnectorSession session)
     {
-        return session.getProperty(ASYNC_SPLIT_FILTERING, boolean.class);
+        return session.getProperty(ASYNC_SPLIT_FILTERING, Boolean.class);
     }
 }
