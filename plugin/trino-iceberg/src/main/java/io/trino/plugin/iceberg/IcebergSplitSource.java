@@ -17,6 +17,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterators;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.plugin.iceberg.delete.TrinoDeleteFile;
@@ -52,7 +53,6 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -179,12 +179,15 @@ public class IcebergSplitSource
             return completedFuture(NO_MORE_SPLITS_BATCH);
         }
 
-        List<IcebergSplit> splits = new ArrayList<>();
-        while (fileScanTaskIterator.hasNext() && splits.size() < maxSize) {
-            Optional<IcebergSplit> split = splitForFileScanTask(fileScanTaskIterator.next());
-            split.ifPresent(splits::add);
-        }
-        return completedFuture(new ConnectorSplitBatch(ImmutableList.copyOf(splits), isFinished()));
+        List<FileScanTask> taskBatch = ImmutableList.copyOf(Iterators.limit(fileScanTaskIterator, maxSize));
+        boolean finished = isFinished();
+        return completedFuture(taskBatch)
+                .thenApply(tasks -> new ConnectorSplitBatch(tasks.stream()
+                        .map(this::splitForFileScanTask)
+                        .filter(Optional::isPresent)
+                        .map(Optional::get)
+                        .collect(toImmutableList()),
+                        finished));
     }
 
     private Optional<IcebergSplit> splitForFileScanTask(FileScanTask scanTask)
