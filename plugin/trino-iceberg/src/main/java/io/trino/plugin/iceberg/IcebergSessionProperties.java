@@ -74,6 +74,8 @@ public final class IcebergSessionProperties
     private static final String PROJECTION_PUSHDOWN_ENABLED = "projection_pushdown_enabled";
     private static final String TARGET_MAX_FILE_SIZE = "target_max_file_size";
     private static final String HIVE_CATALOG_NAME = "hive_catalog_name";
+    private static final String SPLIT_WEIGHT_MIN = "split_weight_min";
+    private static final String SPLIT_WEIGHT_MAX = "split_weight_max";
     public static final String EXPIRE_SNAPSHOTS_MIN_RETENTION = "expire_snapshots_min_retention";
     public static final String REMOVE_ORPHAN_FILES_MIN_RETENTION = "remove_orphan_files_min_retention";
 
@@ -231,6 +233,16 @@ public final class IcebergSessionProperties
                         // Session-level redirections configuration does not work well with views, as view body is analyzed in context
                         // of a session with properties stripped off. Thus, this property is more of a test-only, or at most POC usefulness.
                         true))
+                .add(doubleProperty(
+                        SPLIT_WEIGHT_MAX,
+                        "split weight max",
+                        Double.MAX_VALUE,
+                        false))
+                .add(doubleProperty(
+                        SPLIT_WEIGHT_MIN,
+                        "split weight min",
+                        0.01,
+                        false))
                 .add(durationProperty(
                         EXPIRE_SNAPSHOTS_MIN_RETENTION,
                         "Minimal retention period for expire_snapshot procedure",
@@ -395,5 +407,15 @@ public final class IcebergSessionProperties
     public static Duration getRemoveOrphanFilesMinRetention(ConnectorSession session)
     {
         return session.getProperty(REMOVE_ORPHAN_FILES_MIN_RETENTION, Duration.class);
+    }
+
+    public static double getSplitWeightMax(ConnectorSession session)
+    {
+        return session.getProperty(SPLIT_WEIGHT_MAX, Double.class);
+    }
+
+    public static double getSplitWeightMin(ConnectorSession session)
+    {
+        return session.getProperty(SPLIT_WEIGHT_MIN, Double.class);
     }
 }

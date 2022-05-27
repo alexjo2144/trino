@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.plugin.iceberg.delete.TrinoDeleteFile;
+import io.trino.spi.SplitWeight;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPartitionHandle;
@@ -96,6 +97,8 @@ public class IcebergSplitSource
     private final Stopwatch dynamicFilterWaitStopwatch;
     private final Constraint constraint;
     private final TypeManager typeManager;
+    private final double splitWeightMax;
+    private final double splitWeightMin;
 
     private CloseableIterable<FileScanTask> fileScanTaskIterable;
     private CloseableIterator<FileScanTask> fileScanTaskIterator;
@@ -112,7 +115,9 @@ public class IcebergSplitSource
             Duration dynamicFilteringWaitTimeout,
             Constraint constraint,
             TypeManager typeManager,
-            boolean recordScannedFiles)
+            boolean recordScannedFiles,
+            double splitWeightMax,
+            double splitWeightMin)
     {
         this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
         this.tableScan = requireNonNull(tableScan, "tableScan is null");
@@ -124,6 +129,8 @@ public class IcebergSplitSource
         this.constraint = requireNonNull(constraint, "constraint is null");
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.recordScannedFiles = recordScannedFiles;
+        this.splitWeightMax = splitWeightMax;
+        this.splitWeightMin = splitWeightMin;
     }
 
     @Override
@@ -375,8 +382,11 @@ public class IcebergSplitSource
         return true;
     }
 
-    private static IcebergSplit toIcebergSplit(FileScanTask task)
+    private IcebergSplit toIcebergSplit(FileScanTask task)
     {
+        double weight = (double) task.length() / tableScan.targetSplitSize();
+        weight = Math.max(weight, splitWeightMin);
+        weight = Math.min(weight, splitWeightMax);
         return new IcebergSplit(
                 hadoopPath(task.file().path().toString()),
                 task.start(),
@@ -389,7 +399,8 @@ public class IcebergSplitSource
                 PartitionData.toJson(task.file().partition()),
                 task.deletes().stream()
                         .map(TrinoDeleteFile::copyOf)
-                        .collect(toImmutableList()));
+                        .collect(toImmutableList()),
+                SplitWeight.fromProportion(weight));
     }
 
     private static String hadoopPath(String path)
