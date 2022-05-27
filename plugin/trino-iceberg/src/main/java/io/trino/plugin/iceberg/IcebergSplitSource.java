@@ -53,6 +53,7 @@ import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -99,6 +100,7 @@ public class IcebergSplitSource
     private final TypeManager typeManager;
     private final double splitWeightMax;
     private final double splitWeightMin;
+    private final boolean asyncSplitFiltering;
 
     private CloseableIterable<FileScanTask> fileScanTaskIterable;
     private CloseableIterator<FileScanTask> fileScanTaskIterator;
@@ -117,7 +119,8 @@ public class IcebergSplitSource
             TypeManager typeManager,
             boolean recordScannedFiles,
             double splitWeightMax,
-            double splitWeightMin)
+            double splitWeightMin,
+            boolean asyncSplitFiltering)
     {
         this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
         this.tableScan = requireNonNull(tableScan, "tableScan is null");
@@ -131,6 +134,7 @@ public class IcebergSplitSource
         this.recordScannedFiles = recordScannedFiles;
         this.splitWeightMax = splitWeightMax;
         this.splitWeightMin = splitWeightMin;
+        this.asyncSplitFiltering = asyncSplitFiltering;
     }
 
     @Override
@@ -179,15 +183,25 @@ public class IcebergSplitSource
             return completedFuture(NO_MORE_SPLITS_BATCH);
         }
 
-        List<FileScanTask> taskBatch = ImmutableList.copyOf(Iterators.limit(fileScanTaskIterator, maxSize));
-        boolean finished = isFinished();
-        return completedFuture(taskBatch)
-                .thenApply(tasks -> new ConnectorSplitBatch(tasks.stream()
-                        .map(this::splitForFileScanTask)
-                        .filter(Optional::isPresent)
-                        .map(Optional::get)
-                        .collect(toImmutableList()),
-                        finished));
+        if (asyncSplitFiltering) {
+            List<FileScanTask> taskBatch = ImmutableList.copyOf(Iterators.limit(fileScanTaskIterator, maxSize));
+            boolean finished = isFinished();
+            return completedFuture(taskBatch)
+                    .thenApply(tasks -> new ConnectorSplitBatch(tasks.stream()
+                            .map(this::splitForFileScanTask)
+                            .filter(Optional::isPresent)
+                            .map(Optional::get)
+                            .collect(toImmutableList()),
+                            finished));
+        }
+        else {
+            List<IcebergSplit> splits = new ArrayList<>();
+            while (fileScanTaskIterator.hasNext() && splits.size() < maxSize) {
+                Optional<IcebergSplit> split = splitForFileScanTask(fileScanTaskIterator.next());
+                split.ifPresent(splits::add);
+            }
+            return completedFuture(new ConnectorSplitBatch(ImmutableList.copyOf(splits), isFinished()));
+        }
     }
 
     private Optional<IcebergSplit> splitForFileScanTask(FileScanTask scanTask)

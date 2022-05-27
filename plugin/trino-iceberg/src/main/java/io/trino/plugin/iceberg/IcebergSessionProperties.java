@@ -79,6 +79,8 @@ public final class IcebergSessionProperties
     public static final String EXPIRE_SNAPSHOTS_MIN_RETENTION = "expire_snapshots_min_retention";
     public static final String REMOVE_ORPHAN_FILES_MIN_RETENTION = "remove_orphan_files_min_retention";
 
+    private static final String ASYNC_SPLIT_FILTERING = "async_split_filtering";
+
     private final List<PropertyMetadata<?>> sessionProperties;
 
     @Inject
@@ -253,6 +255,11 @@ public final class IcebergSessionProperties
                         "Minimal retention period for remove_orphan_files procedure",
                         icebergConfig.getRemoveOrphanFilesMinRetention(),
                         false))
+                .add(booleanProperty(
+                        ASYNC_SPLIT_FILTERING,
+                        "Run split filters on a separate thread",
+                        true,
+                        false))
                 .build();
     }
 
@@ -417,5 +424,10 @@ public final class IcebergSessionProperties
     public static double getSplitWeightMin(ConnectorSession session)
     {
         return session.getProperty(SPLIT_WEIGHT_MIN, Double.class);
+    }
+
+    public static boolean getAsyncSplitFiltering(ConnectorSession session)
+    {
+        return session.getProperty(ASYNC_SPLIT_FILTERING, boolean.class);
     }
 }
