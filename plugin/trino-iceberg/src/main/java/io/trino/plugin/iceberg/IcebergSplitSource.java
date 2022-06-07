@@ -22,7 +22,6 @@ import com.google.common.io.Closer;
 import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.trino.plugin.iceberg.delete.TrinoDeleteFile;
-import io.trino.spi.SplitWeight;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorPartitionHandle;
@@ -101,7 +100,6 @@ public class IcebergSplitSource
     private final Constraint constraint;
     private final TypeManager typeManager;
     private final Closer closer = Closer.create();
-    private final double minimumAssignedSplitWeight;
 
     private CloseableIterable<FileScanTask> fileScanTaskIterable;
     private CloseableIterator<FileScanTask> fileScanTaskIterator;
@@ -118,8 +116,7 @@ public class IcebergSplitSource
             Duration dynamicFilteringWaitTimeout,
             Constraint constraint,
             TypeManager typeManager,
-            boolean recordScannedFiles,
-            double minimumAssignedSplitWeight)
+            boolean recordScannedFiles)
     {
         this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
         this.tableScan = requireNonNull(tableScan, "tableScan is null");
@@ -131,7 +128,6 @@ public class IcebergSplitSource
         this.constraint = requireNonNull(constraint, "constraint is null");
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.recordScannedFiles = recordScannedFiles;
-        this.minimumAssignedSplitWeight = minimumAssignedSplitWeight;
     }
 
     @Override
@@ -378,7 +374,7 @@ public class IcebergSplitSource
         return true;
     }
 
-    private IcebergSplit toIcebergSplit(FileScanTask task)
+    private static IcebergSplit toIcebergSplit(FileScanTask task)
     {
         return new IcebergSplit(
                 hadoopPath(task.file().path().toString()),
@@ -392,8 +388,7 @@ public class IcebergSplitSource
                 PartitionData.toJson(task.file().partition()),
                 task.deletes().stream()
                         .map(TrinoDeleteFile::copyOf)
-                        .collect(toImmutableList()),
-                SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)));
+                        .collect(toImmutableList()));
     }
 
     private static String hadoopPath(String path)
