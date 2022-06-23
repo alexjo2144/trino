@@ -23,6 +23,8 @@ import io.trino.plugin.iceberg.IcebergFileFormat;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
@@ -37,6 +39,7 @@ public class IcebergOptimizeHandle
     private final IcebergFileFormat fileFormat;
     private final Map<String, String> tableStorageProperties;
     private final DataSize maxScannedFileSize;
+    private final Optional<Set<Integer>> partitionSpecsToScan;
     private final boolean retriesEnabled;
 
     @JsonCreator
@@ -48,6 +51,7 @@ public class IcebergOptimizeHandle
             IcebergFileFormat fileFormat,
             Map<String, String> tableStorageProperties,
             DataSize maxScannedFileSize,
+            Optional<Set<Integer>> partitionSpecsToScan,
             boolean retriesEnabled)
     {
         this.snapshotId = snapshotId;
@@ -57,6 +61,7 @@ public class IcebergOptimizeHandle
         this.fileFormat = requireNonNull(fileFormat, "fileFormat is null");
         this.tableStorageProperties = ImmutableMap.copyOf(requireNonNull(tableStorageProperties, "tableStorageProperties is null"));
         this.maxScannedFileSize = requireNonNull(maxScannedFileSize, "maxScannedFileSize is null");
+        this.partitionSpecsToScan = requireNonNull(partitionSpecsToScan, "partitionSpecsToScan is null");
         this.retriesEnabled = retriesEnabled;
     }
 
@@ -103,6 +108,12 @@ public class IcebergOptimizeHandle
     }
 
     @JsonProperty
+    public Optional<Set<Integer>> getPartitionSpecsToScan()
+    {
+        return partitionSpecsToScan;
+    }
+
+    @JsonProperty
     public boolean isRetriesEnabled()
     {
         return retriesEnabled;
@@ -119,6 +130,7 @@ public class IcebergOptimizeHandle
                 .add("fileFormat", fileFormat)
                 .add("tableStorageProperties", tableStorageProperties)
                 .add("maxScannedFileSize", maxScannedFileSize)
+                .add("partitionSpecsToScan", partitionSpecsToScan)
                 .add("retriesEnabled", retriesEnabled)
                 .toString();
     }

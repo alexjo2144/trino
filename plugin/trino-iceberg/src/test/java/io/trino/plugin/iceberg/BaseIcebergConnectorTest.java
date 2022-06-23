@@ -3805,6 +3805,25 @@ public abstract class BaseIcebergConnectorTest
     }
 
     @Test
+    public void testOptimizingSinglePartitionSpec()
+    {
+        String tableName = "test_optimizing_single_partition_spec_" + randomTableSuffix();
+        assertUpdate(
+                "CREATE TABLE " + tableName + " WITH (partitioning = ARRAY['bucket(regionkey, 2)']) AS SELECT * FROM nation WHERE nationkey < 10",
+                "SELECT count(*) FROM nation WHERE nationkey < 10");
+        int bucketedPartitionSpecId = (Integer) computeActual("SELECT DISTINCT partition_spec_id FROM \"" + tableName + "$files\"").getOnlyValue();
+        assertUpdate("ALTER TABLE " + tableName + " SET PROPERTIES partitioning = ARRAY['regionkey']");
+        assertUpdate("INSERT INTO " + tableName + " SELECT * FROM nation WHERE nationkey >= 10", "SELECT count(*) FROM nation WHERE nationkey >= 10");
+        int identityPartitionSpecId = (Integer) computeActual("SELECT DISTINCT partition_spec_id FROM \"" + tableName + "$files\" WHERE partition_spec_id != " + bucketedPartitionSpecId).getOnlyValue();
+
+        assertThatThrownBy(() -> query("ALTER TABLE " + tableName + " EXECUTE optimize WHERE regionkey = 2"))
+                .hasMessageContaining("connector was not able to handle provided WHERE expression");
+        assertThatThrownBy(() -> query("ALTER TABLE " + tableName + " EXECUTE optimize (selected_partitioning_ids => ARRAY[" + bucketedPartitionSpecId + "]) WHERE regionkey = 2"))
+                .hasMessageContaining("connector was not able to handle provided WHERE expression");
+        assertUpdate("ALTER TABLE " + tableName + " EXECUTE optimize (selected_partitioning_ids => ARRAY[" + identityPartitionSpecId + "]) WHERE regionkey = 2");
+    }
+
+    @Test
     public void testOptimizeParameterValidation()
     {
         assertQueryFails(
@@ -3816,6 +3835,9 @@ public abstract class BaseIcebergConnectorTest
         assertQueryFails(
                 "ALTER TABLE nation EXECUTE OPTIMIZE (file_size_threshold => '33s')",
                 "\\QUnable to set catalog 'iceberg' table procedure 'OPTIMIZE' property 'file_size_threshold' to ['33s']: Unknown unit: s");
+        assertQueryFails(
+                "ALTER TABLE nation EXECUTE OPTIMIZE (selected_partitioning_ids => ARRAY[1])",
+                "Unknown partition specs: \\[1]");
     }
 
     @Test

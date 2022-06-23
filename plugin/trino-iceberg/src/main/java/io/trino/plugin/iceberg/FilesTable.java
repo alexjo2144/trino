@@ -67,6 +67,7 @@ public class FilesTable
                         .add(new ColumnMetadata("content", INTEGER))
                         .add(new ColumnMetadata("file_path", VARCHAR))
                         .add(new ColumnMetadata("file_format", VARCHAR))
+                        .add(new ColumnMetadata("partition_spec_id", INTEGER))
                         .add(new ColumnMetadata("record_count", BIGINT))
                         .add(new ColumnMetadata("file_size_in_bytes", BIGINT))
                         .add(new ColumnMetadata("column_sizes", typeManager.getType(mapType(INTEGER.getTypeSignature(), BIGINT.getTypeSignature()))))
@@ -119,6 +120,7 @@ public class FilesTable
             pagesBuilder.appendInteger(dataFile.content().id());
             pagesBuilder.appendVarchar(dataFile.path().toString());
             pagesBuilder.appendVarchar(dataFile.format().name());
+            pagesBuilder.appendInteger(dataFile.specId());
             pagesBuilder.appendBigint(dataFile.recordCount());
             pagesBuilder.appendBigint(dataFile.fileSizeInBytes());
             if (checkNonNull(dataFile.columnSizes(), pagesBuilder)) {

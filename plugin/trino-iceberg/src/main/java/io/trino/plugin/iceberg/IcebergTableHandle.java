@@ -63,6 +63,7 @@ public class IcebergTableHandle
     // OPTIMIZE only. Coordinator-only
     private final boolean recordScannedFiles;
     private final Optional<DataSize> maxScannedFileSize;
+    private final Optional<Set<Integer>> partitionSpecsToScan;
 
     @JsonCreator
     public static IcebergTableHandle fromJsonForDeserializationOnly(
@@ -99,6 +100,7 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 false,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -119,7 +121,8 @@ public class IcebergTableHandle
             RetryMode retryMode,
             List<IcebergColumnHandle> updatedColumns,
             boolean recordScannedFiles,
-            Optional<DataSize> maxScannedFileSize)
+            Optional<DataSize> maxScannedFileSize,
+            Optional<Set<Integer>> partitionSpecsToScan)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
@@ -138,6 +141,7 @@ public class IcebergTableHandle
         this.updatedColumns = ImmutableList.copyOf(requireNonNull(updatedColumns, "updatedColumns is null"));
         this.recordScannedFiles = recordScannedFiles;
         this.maxScannedFileSize = requireNonNull(maxScannedFileSize, "maxScannedFileSize is null");
+        this.partitionSpecsToScan = requireNonNull(partitionSpecsToScan, "partitionSpecsToScan is null");
     }
 
     @JsonProperty
@@ -242,6 +246,12 @@ public class IcebergTableHandle
         return maxScannedFileSize;
     }
 
+    @JsonIgnore
+    public Optional<Set<Integer>> getPartitionSpecsToScan()
+    {
+        return partitionSpecsToScan;
+    }
+
     public SchemaTableName getSchemaTableName()
     {
         return new SchemaTableName(schemaName, tableName);
@@ -271,7 +281,8 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 recordScannedFiles,
-                maxScannedFileSize);
+                maxScannedFileSize,
+                partitionSpecsToScan);
     }
 
     public IcebergTableHandle withRetryMode(RetryMode retryMode)
@@ -293,7 +304,8 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 recordScannedFiles,
-                maxScannedFileSize);
+                maxScannedFileSize,
+                partitionSpecsToScan);
     }
 
     public IcebergTableHandle withUpdatedColumns(List<IcebergColumnHandle> updatedColumns)
@@ -315,10 +327,11 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 recordScannedFiles,
-                maxScannedFileSize);
+                maxScannedFileSize,
+                partitionSpecsToScan);
     }
 
-    public IcebergTableHandle forOptimize(boolean recordScannedFiles, DataSize maxScannedFileSize)
+    public IcebergTableHandle forOptimize(boolean recordScannedFiles, DataSize maxScannedFileSize, Optional<Set<Integer>> partitionSpecsToScan)
     {
         return new IcebergTableHandle(
                 schemaName,
@@ -337,7 +350,8 @@ public class IcebergTableHandle
                 retryMode,
                 updatedColumns,
                 recordScannedFiles,
-                Optional.of(maxScannedFileSize));
+                Optional.of(maxScannedFileSize),
+                partitionSpecsToScan);
     }
 
     @Override
@@ -367,14 +381,15 @@ public class IcebergTableHandle
                 Objects.equals(retryMode, that.retryMode) &&
                 Objects.equals(updatedColumns, that.updatedColumns) &&
                 Objects.equals(storageProperties, that.storageProperties) &&
-                Objects.equals(maxScannedFileSize, that.maxScannedFileSize);
+                Objects.equals(maxScannedFileSize, that.maxScannedFileSize) &&
+                Objects.equals(partitionSpecsToScan, that.partitionSpecsToScan);
     }
 
     @Override
     public int hashCode()
     {
         return Objects.hash(schemaName, tableName, tableType, snapshotId, tableSchemaJson, partitionSpecJson, formatVersion, unenforcedPredicate, enforcedPredicate,
-                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize);
+                projectedColumns, nameMappingJson, tableLocation, storageProperties, retryMode, updatedColumns, recordScannedFiles, maxScannedFileSize, partitionSpecsToScan);
     }
 
     @Override

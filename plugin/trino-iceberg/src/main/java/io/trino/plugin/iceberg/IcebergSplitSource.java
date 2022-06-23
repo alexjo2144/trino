@@ -108,6 +108,7 @@ public class IcebergSplitSource
     private TupleDomain<IcebergColumnHandle> pushedDownDynamicFilterPredicate;
 
     private final boolean recordScannedFiles;
+    private final Optional<Set<Integer>> partitionSpecsToScan;
     private final ImmutableSet.Builder<DataFile> scannedFiles = ImmutableSet.builder();
 
     public IcebergSplitSource(
@@ -119,7 +120,8 @@ public class IcebergSplitSource
             Constraint constraint,
             TypeManager typeManager,
             boolean recordScannedFiles,
-            double minimumAssignedSplitWeight)
+            double minimumAssignedSplitWeight,
+            Optional<Set<Integer>> partitionSpecsToScan)
     {
         this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
         this.tableScan = requireNonNull(tableScan, "tableScan is null");
@@ -132,6 +134,7 @@ public class IcebergSplitSource
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.recordScannedFiles = recordScannedFiles;
         this.minimumAssignedSplitWeight = minimumAssignedSplitWeight;
+        this.partitionSpecsToScan = requireNonNull(partitionSpecsToScan, "partitionSpecsToScan is null");
     }
 
     @Override
@@ -187,6 +190,10 @@ public class IcebergSplitSource
         while (fileScanTasks.hasNext()) {
             FileScanTask scanTask = fileScanTasks.next();
             if (maxScannedFileSizeInBytes.isPresent() && scanTask.file().fileSizeInBytes() > maxScannedFileSizeInBytes.get()) {
+                continue;
+            }
+
+            if (partitionSpecsToScan.isPresent() && !partitionSpecsToScan.get().contains(scanTask.spec().specId())) {
                 continue;
             }
 

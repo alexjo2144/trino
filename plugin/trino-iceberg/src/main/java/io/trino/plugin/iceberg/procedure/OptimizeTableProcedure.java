@@ -14,18 +14,29 @@
 package io.trino.plugin.iceberg.procedure;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import io.airlift.units.DataSize;
 import io.trino.spi.connector.TableProcedureMetadata;
+import io.trino.spi.session.PropertyMetadata;
+import io.trino.spi.type.ArrayType;
 
 import javax.inject.Provider;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static io.trino.plugin.base.session.PropertyMetadataUtil.dataSizeProperty;
 import static io.trino.plugin.iceberg.procedure.IcebergTableProcedureId.OPTIMIZE;
 import static io.trino.spi.connector.TableProcedureExecutionMode.distributedWithFilteringAndRepartitioning;
+import static io.trino.spi.type.IntegerType.INTEGER;
 
 public class OptimizeTableProcedure
         implements Provider<TableProcedureMetadata>
 {
+    public static final String SELECTED_PARTITIONING_IDS_PROPERTY = "selected_partitioning_ids";
+
     @Override
     public TableProcedureMetadata get()
     {
@@ -37,6 +48,22 @@ public class OptimizeTableProcedure
                                 "file_size_threshold",
                                 "Only compact files smaller than given threshold in bytes",
                                 DataSize.of(100, DataSize.Unit.MEGABYTE),
-                                false)));
+                                false),
+                        new PropertyMetadata<>(
+                                SELECTED_PARTITIONING_IDS_PROPERTY,
+                                "List of partition spec ids to optimize",
+                                new ArrayType(INTEGER),
+                                List.class,
+                                ImmutableList.of(),
+                                false,
+                                value -> ImmutableList.copyOf((Collection<?>) value),
+                                value -> value)));
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Set<Integer> getSelectedPartitioningIds(Map<String, Object> procedureProperties)
+    {
+        List<Integer> selectedPartitioningIds = (List<Integer>) procedureProperties.get(SELECTED_PARTITIONING_IDS_PROPERTY);
+        return ImmutableSet.copyOf(selectedPartitioningIds);
     }
 }

@@ -178,6 +178,7 @@ import static io.trino.plugin.iceberg.IcebergTableProperties.FORMAT_VERSION_PROP
 import static io.trino.plugin.iceberg.IcebergTableProperties.PARTITIONING_PROPERTY;
 import static io.trino.plugin.iceberg.IcebergTableProperties.getPartitioning;
 import static io.trino.plugin.iceberg.IcebergUtil.canEnforceColumnConstraintInAllSpecs;
+import static io.trino.plugin.iceberg.IcebergUtil.canEnforceColumnConstraintInSpecs;
 import static io.trino.plugin.iceberg.IcebergUtil.deserializePartitionValue;
 import static io.trino.plugin.iceberg.IcebergUtil.getColumnHandle;
 import static io.trino.plugin.iceberg.IcebergUtil.getColumns;
@@ -197,6 +198,7 @@ import static io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog.DEPENDS_ON_TA
 import static io.trino.plugin.iceberg.procedure.IcebergTableProcedureId.EXPIRE_SNAPSHOTS;
 import static io.trino.plugin.iceberg.procedure.IcebergTableProcedureId.OPTIMIZE;
 import static io.trino.plugin.iceberg.procedure.IcebergTableProcedureId.REMOVE_ORPHAN_FILES;
+import static io.trino.plugin.iceberg.procedure.OptimizeTableProcedure.getSelectedPartitioningIds;
 import static io.trino.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static io.trino.spi.StandardErrorCode.INVALID_ARGUMENTS;
 import static io.trino.spi.StandardErrorCode.NOT_SUPPORTED;
@@ -333,6 +335,7 @@ public class IcebergMetadata
                 NO_RETRIES,
                 ImmutableList.of(),
                 false,
+                Optional.empty(),
                 Optional.empty());
     }
 
@@ -879,7 +882,13 @@ public class IcebergMetadata
     private Optional<ConnectorTableExecuteHandle> getTableHandleForOptimize(ConnectorSession session, IcebergTableHandle tableHandle, Map<String, Object> executeProperties, RetryMode retryMode)
     {
         DataSize maxScannedFileSize = (DataSize) executeProperties.get("file_size_threshold");
+        Set<Integer> partitionSpecsToScan = getSelectedPartitioningIds(executeProperties);
         Table icebergTable = catalog.loadTable(session, tableHandle.getSchemaTableName());
+
+        Set<Integer> unknownSpecIds = Sets.difference(partitionSpecsToScan, icebergTable.specs().keySet());
+        if (!unknownSpecIds.isEmpty()) {
+            throw new TrinoException(INVALID_ARGUMENTS, "Unknown partition specs: " + partitionSpecsToScan);
+        }
 
         return Optional.of(new IcebergTableExecuteHandle(
                 tableHandle.getSchemaTableName(),
@@ -892,6 +901,7 @@ public class IcebergMetadata
                         getFileFormat(icebergTable),
                         icebergTable.properties(),
                         maxScannedFileSize,
+                        partitionSpecsToScan.isEmpty() ? Optional.empty() : Optional.of(partitionSpecsToScan),
                         retryMode != NO_RETRIES),
                 icebergTable.location()));
     }
@@ -985,7 +995,7 @@ public class IcebergMetadata
 
         return new BeginTableExecuteResult<>(
                 executeHandle,
-                table.forOptimize(true, optimizeHandle.getMaxScannedFileSize()));
+                table.forOptimize(true, optimizeHandle.getMaxScannedFileSize(), optimizeHandle.getPartitionSpecsToScan()));
     }
 
     @Override
@@ -1751,6 +1761,10 @@ public class IcebergMetadata
                         (columnHandle.getType() == UUID && !(domain.isOnlyNull() || domain.getValues().isAll()))) {
                     unsupported.put(columnHandle, domain);
                 }
+                else if (table.getPartitionSpecsToScan().isPresent() &&
+                        canEnforceColumnConstraintInSpecs(typeOperators, icebergTable, columnHandle, domain, table.getPartitionSpecsToScan().get())) {
+                    newEnforced.put(columnHandle, domain);
+                }
                 else if (canEnforceColumnConstraintInAllSpecs(typeOperators, icebergTable, columnHandle, domain)) {
                     newEnforced.put(columnHandle, domain);
                 }
@@ -1787,7 +1801,8 @@ public class IcebergMetadata
                         table.getRetryMode(),
                         table.getUpdatedColumns(),
                         table.isRecordScannedFiles(),
-                        table.getMaxScannedFileSize()),
+                        table.getMaxScannedFileSize(),
+                        table.getPartitionSpecsToScan()),
                 remainingConstraint.transformKeys(ColumnHandle.class::cast),
                 extractionResult.getRemainingExpression(),
                 false));

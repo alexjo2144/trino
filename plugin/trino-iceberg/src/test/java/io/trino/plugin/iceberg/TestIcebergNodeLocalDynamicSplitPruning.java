@@ -184,6 +184,7 @@ public class TestIcebergNodeLocalDynamicSplitPruning
                         RetryMode.NO_RETRIES,
                         ImmutableList.of(),
                         false,
+                        Optional.empty(),
                         Optional.empty()),
                 transaction);
 
