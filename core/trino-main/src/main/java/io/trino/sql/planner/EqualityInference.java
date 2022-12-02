@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.ImmutableSetMultimap;
 import com.google.common.collect.Multimap;
 import io.trino.metadata.Metadata;
+import io.trino.sql.tree.Cast;
 import io.trino.sql.tree.ComparisonExpression;
 import io.trino.sql.tree.Expression;
 import io.trino.sql.tree.SymbolReference;
@@ -40,6 +41,7 @@ import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.trino.sql.ExpressionUtils.extractConjuncts;
 import static io.trino.sql.planner.DeterminismEvaluator.isDeterministic;
 import static io.trino.sql.planner.ExpressionNodeInliner.replaceExpression;
@@ -63,12 +65,14 @@ public class EqualityInference
             .thenComparing(Expression::toString);
 
     private final Multimap<Expression, Expression> equalitySets; // Indexed by canonical expression
+    private final Multimap<Expression, Cast> castableEqualitySets; // Indexed by canonical expression, equalities which require type casting
     private final Map<Expression, Expression> canonicalMap; // Map each known expression to canonical expression
     private final Set<Expression> derivedExpressions;
 
-    private EqualityInference(Multimap<Expression, Expression> equalitySets, Map<Expression, Expression> canonicalMap, Set<Expression> derivedExpressions)
+    private EqualityInference(Multimap<Expression, Expression> equalitySets, Multimap<Expression, Cast> castableEqualitySets, Map<Expression, Expression> canonicalMap, Set<Expression> derivedExpressions)
     {
         this.equalitySets = equalitySets;
+        this.castableEqualitySets = castableEqualitySets;
         this.canonicalMap = canonicalMap;
         this.derivedExpressions = derivedExpressions;
     }
@@ -198,16 +202,22 @@ public class EqualityInference
     public static EqualityInference newInstance(Metadata metadata, Collection<Expression> expressions)
     {
         DisjointSet<Expression> equalities = new DisjointSet<>();
-        expressions.stream()
+        List<Expression> equalityExpressions = expressions.stream()
                 .flatMap(expression -> extractConjuncts(expression).stream())
                 .filter(expression -> isInferenceCandidate(metadata, expression))
-                .forEach(expression -> {
-                    ComparisonExpression comparison = (ComparisonExpression) expression;
-                    Expression expression1 = comparison.getLeft();
-                    Expression expression2 = comparison.getRight();
+                .collect(toImmutableList());
+        equalityExpressions.forEach(expression -> {
+            ComparisonExpression comparison = (ComparisonExpression) expression;
+            Expression expression1 = comparison.getLeft();
+            Expression expression2 = comparison.getRight();
 
-                    equalities.findAndUnion(expression1, expression2);
-                });
+            if (!(expression2 instanceof Cast)) {
+                equalities.findAndUnion(expression1, expression2);
+            }
+            else {
+                equalities.findAndUnion(expression1, expression1);
+            }
+        });
 
         Collection<Set<Expression>> equivalentClasses = equalities.getEquivalentClasses();
 
@@ -248,7 +258,7 @@ public class EqualityInference
             canonicalMappings.put(expression, canonical);
         }
 
-        return new EqualityInference(equalitySets, canonicalMappings.buildOrThrow(), derivedExpressions);
+        return new EqualityInference(equalitySets, makeCastableEqualitySets(equalityExpressions), canonicalMappings.buildOrThrow(), derivedExpressions);
     }
 
     /**
@@ -268,6 +278,17 @@ public class EqualityInference
                         ? subExpression -> true
                         : subExpression -> !subExpression.equals(expression))
                 .forEach(subExpression -> {
+                    if (subExpression instanceof ComparisonExpression) {
+                        ComparisonExpression comparisonExpression = (ComparisonExpression) subExpression;
+                        castableEqualitySets.entries().stream()
+                                .filter(equality -> equality.getValue().getExpression().equals(comparisonExpression.getLeft()))
+                                .findFirst()
+                                .ifPresent(expressionCastEntry ->
+                                        expressionRemap.putIfAbsent(
+                                                subExpression,
+                                                new ComparisonExpression(comparisonExpression.getOperator(), expressionCastEntry.getKey(), new Cast(comparisonExpression.getRight(), expressionCastEntry.getValue().getType()))));
+                    }
+
                     Expression canonical = getScopedCanonical(subExpression, symbolScope);
                     if (canonical != null) {
                         expressionRemap.putIfAbsent(subExpression, canonical);
@@ -335,6 +356,21 @@ public class EqualityInference
                 builder.putAll(equalityGroup.stream().min(CANONICAL_COMPARATOR).get(), equalityGroup);
             }
         }
+        return builder.build();
+    }
+
+    private static Multimap<Expression, Cast> makeCastableEqualitySets(List<Expression> equalityExpressions)
+    {
+        ImmutableSetMultimap.Builder<Expression, Cast> builder = ImmutableSetMultimap.builder();
+        equalityExpressions.forEach(expression -> {
+            ComparisonExpression comparison = (ComparisonExpression) expression;
+            Expression expression1 = comparison.getLeft();
+            Expression expression2 = comparison.getRight();
+
+            if (expression2 instanceof Cast) {
+                builder.put(expression1, (Cast) expression2);
+            }
+        });
         return builder.build();
     }
 
