@@ -33,6 +33,7 @@ import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.airlift.slice.Slices.wrappedBuffer;
@@ -70,7 +71,7 @@ public class DeltaLakePageSource
             ConnectorPageSource delegate,
             String path,
             long fileSize,
-            long fileModifiedTime)
+            Optional<Long> fileModifiedTime)
     {
         int size = columns.size();
         requireNonNull(partitionKeys, "partitionKeys is null");
@@ -102,7 +103,8 @@ public class DeltaLakePageSource
                 delegateIndexes[outputIndex] = -1;
             }
             else if (column.getName().equals(FILE_MODIFIED_TIME_COLUMN_NAME)) {
-                long packedTimestamp = packDateTimeWithZone(fileModifiedTime, UTC_KEY);
+                checkState(fileModifiedTime.isPresent(), "fileModifiedTime must be provided for " + FILE_MODIFIED_TIME_COLUMN_NAME);
+                long packedTimestamp = packDateTimeWithZone(fileModifiedTime.get(), UTC_KEY);
                 prefilledBlocks[outputIndex] = Utils.nativeValueToBlock(FILE_MODIFIED_TIME_TYPE, packedTimestamp);
                 delegateIndexes[outputIndex] = -1;
             }

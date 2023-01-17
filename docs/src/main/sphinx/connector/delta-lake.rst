@@ -722,6 +722,55 @@ directly or used in conditional statements.
 * ``$file_size``
     Size of the file for this row.
 
+Functions
+---------
+
+The connector exposes following table functions:
+
+system.table_changes
+^^^^^^^^^^^^^^^^^^^^
+
+Allows reading Change Data Feed (CDF) entries. This feature allows
+Delta tables to track row-level changes between versions of a Delta table.
+When enabled on a Delta table, it records "change events" for all the data
+written into the table.
+Apart from columns present in the table this function
+returns 3 additional columns that comes from CDF entries:
+``_change_type``, ``_commit_version``, ``_commit_timestamp``.
+
+.. code-block:: sql
+
+    SELECT * FROM TABLE(system.table_changes(schema_name => 'test_schema', table_name => 'tableName', since_version => 0))
+
+``since_version`` - type ``BIGINT``, exclusive
+
+If ``since_version`` is not provided  entire history will be read.
+Example:
+
+.. code-block:: sql
+
+    CREATE TABLE pages (page_url VARCHAR, domain VARCHAR, views INTEGER) WITH (change_data_feed_enabled = true);
+    INSERT INTO pages VALUES('url1', 'domain1', 1), ('url2', 'domain2', 2), ('url3', 'domain1', 3);
+    INSERT INTO pages VALUES('url4', 'domain1', 400), ('url5', 'domain2', 500), ('url6', 'domain3', 2);
+    UPDATE pages SET domain = 'domain4' WHERE views = 2;
+    SELECT * FROM TABLE(system.table_changes('test_schema', 'pages')) ORDER BY _commit_version ASC;
+
+returns following rows:
+
+.. code-block:: text
+
+  page_url    |     domain     |    views    |    _change_type     |    _commit_version    |    _commit_timestamp
+  url1        |     domain1    |    1        |    insert           |     1                 |    2023-03-10T20:21:22.000+0000
+  url2        |     domain2    |    2        |    insert           |     1                 |    2023-03-10T20:21:22.000+0000
+  url3        |     domain1    |    3        |    insert           |     1                 |    2023-03-10T20:21:22.000+0000
+  url4        |     domain1    |    400      |    insert           |     2                 |    2023-03-10T21:22:23.000+0000
+  url5        |     domain2    |    500      |    insert           |     2                 |    2023-03-10T21:22:23.000+0000
+  url6        |     domain3    |    2        |    insert           |     2                 |    2023-03-10T21:22:23.000+0000
+  url2        |     domain2    |    2        |    update_preimage  |     3                 |    2023-03-10T22:23:24.000+0000
+  url2        |     domain4    |    2        |    update_postimage |     3                 |    2023-03-10T22:23:24.000+0000
+  url6        |     domain3    |    2        |    update_preimage  |     3                 |    2023-03-10T22:23:24.000+0000
+  url6        |     domain4    |    2        |    update_postimage |     3                 |    2023-03-10T22:23:24.000+0000
+
 Performance
 -----------
 

@@ -54,7 +54,9 @@ import io.trino.spi.connector.ConnectorPageSourceProvider;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.TableProcedureMetadata;
 import io.trino.spi.eventlistener.EventListener;
+import io.trino.spi.function.FunctionProvider;
 import io.trino.spi.procedure.Procedure;
+import io.trino.spi.ptf.ConnectorTableFunction;
 import io.trino.spi.type.TypeManager;
 import org.weakref.jmx.guice.MBeanModule;
 
@@ -138,6 +140,9 @@ public final class InternalDeltaLakeConnectorFactory
             Set<Procedure> procedures = injector.getInstance(Key.get(new TypeLiteral<Set<Procedure>>() {}));
             Set<TableProcedureMetadata> tableProcedures = injector.getInstance(Key.get(new TypeLiteral<Set<TableProcedureMetadata>>() {}));
 
+            Set<ConnectorTableFunction> connectorTableFunctions = injector.getInstance(Key.get(new TypeLiteral<Set<ConnectorTableFunction>>() {}));
+            FunctionProvider functionProvider = injector.getInstance(FunctionProvider.class);
+
             return new DeltaLakeConnector(
                     lifeCycleManager,
                     new ClassLoaderSafeConnectorSplitManager(splitManager, classLoader),
@@ -153,7 +158,9 @@ public final class InternalDeltaLakeConnectorFactory
                     deltaLakeAnalyzeProperties.getAnalyzeProperties(),
                     deltaAccessControl,
                     eventListeners,
-                    transactionManager);
+                    transactionManager,
+                    connectorTableFunctions,
+                    functionProvider);
         }
     }
 }

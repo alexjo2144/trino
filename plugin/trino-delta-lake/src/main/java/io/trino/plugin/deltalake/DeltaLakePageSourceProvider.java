@@ -173,7 +173,7 @@ public class DeltaLakePageSourceProvider
                     generatePages(split.getFileRowCount().get(), onlyRowIdColumn(regularColumns)),
                     split.getPath(),
                     split.getFileSize(),
-                    split.getFileModifiedTime());
+                    Optional.of(split.getFileModifiedTime()));
         }
 
         TrinoInputFile inputFile = fileSystemFactory.create(session).newInputFile(split.getPath(), split.getFileSize());
@@ -223,7 +223,7 @@ public class DeltaLakePageSourceProvider
                 pageSource.get(),
                 split.getPath(),
                 split.getFileSize(),
-                split.getFileModifiedTime());
+                Optional.of(split.getFileModifiedTime()));
     }
 
     public Map<Integer, String> loadParquetIdAndNameMapping(TrinoInputFile inputFile, ParquetReaderOptions options)

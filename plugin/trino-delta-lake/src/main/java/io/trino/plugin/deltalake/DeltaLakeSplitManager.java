@@ -15,7 +15,10 @@ package io.trino.plugin.deltalake;
 
 import com.google.common.collect.ImmutableList;
 import io.airlift.units.DataSize;
+import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.base.classloader.ClassLoaderSafeConnectorSplitSource;
+import io.trino.plugin.deltalake.functions.tablechanges.TableChangesSplitSource;
+import io.trino.plugin.deltalake.functions.tablechanges.TableChangesTableFunctionHandle;
 import io.trino.plugin.deltalake.metastore.DeltaLakeMetastore;
 import io.trino.plugin.deltalake.transactionlog.AddFileEntry;
 import io.trino.plugin.deltalake.transactionlog.statistics.DeltaLakeFileStatistics;
@@ -30,9 +33,11 @@ import io.trino.spi.connector.ConnectorTransactionHandle;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.DynamicFilter;
 import io.trino.spi.connector.FixedSplitSource;
+import io.trino.spi.function.SchemaFunctionName;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.NullableValue;
 import io.trino.spi.predicate.TupleDomain;
+import io.trino.spi.ptf.ConnectorTableFunctionHandle;
 import io.trino.spi.type.TypeManager;
 
 import javax.inject.Inject;
@@ -58,6 +63,7 @@ import static io.trino.plugin.deltalake.DeltaLakeMetadata.createStatisticsPredic
 import static io.trino.plugin.deltalake.DeltaLakeSessionProperties.getDynamicFilteringWaitTimeout;
 import static io.trino.plugin.deltalake.DeltaLakeSessionProperties.getMaxInitialSplitSize;
 import static io.trino.plugin.deltalake.DeltaLakeSessionProperties.getMaxSplitSize;
+import static io.trino.plugin.deltalake.functions.tablechanges.TableChangesFunction.TABLE_CHANGES_NAME;
 import static io.trino.plugin.deltalake.transactionlog.DeltaLakeSchemaSupport.extractSchema;
 import static io.trino.plugin.deltalake.transactionlog.TransactionLogParser.deserializePartitionValue;
 import static io.trino.spi.connector.FixedSplitSource.emptySplitSource;
@@ -76,13 +82,15 @@ public class DeltaLakeSplitManager
     private final int maxSplitsPerSecond;
     private final int maxOutstandingSplits;
     private final double minimumAssignedSplitWeight;
+    private final TrinoFileSystemFactory fileSystemFactory;
 
     @Inject
     public DeltaLakeSplitManager(
             TypeManager typeManager,
             BiFunction<ConnectorSession, HiveTransactionHandle, DeltaLakeMetastore> metastoreProvider,
             ExecutorService executor,
-            DeltaLakeConfig config)
+            DeltaLakeConfig config,
+            TrinoFileSystemFactory fileSystemFactory)
     {
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.metastoreProvider = requireNonNull(metastoreProvider, "metastoreProvider is null");
@@ -91,6 +99,7 @@ public class DeltaLakeSplitManager
         this.maxSplitsPerSecond = config.getMaxSplitsPerSecond();
         this.maxOutstandingSplits = config.getMaxOutstandingSplits();
         this.minimumAssignedSplitWeight = config.getMinimumAssignedSplitWeight();
+        this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
     }
 
     @Override
@@ -120,6 +129,17 @@ public class DeltaLakeSplitManager
                 deltaLakeTableHandle.isRecordScannedFiles());
 
         return new ClassLoaderSafeConnectorSplitSource(splitSource, DeltaLakeSplitManager.class.getClassLoader());
+    }
+
+    @Override
+    public ConnectorSplitSource getSplits(ConnectorTransactionHandle transaction, ConnectorSession session, SchemaFunctionName name, ConnectorTableFunctionHandle function)
+    {
+        if (name.equals(TABLE_CHANGES_NAME)) {
+            TableChangesTableFunctionHandle tableFunctionHandle = (TableChangesTableFunctionHandle) function;
+            DeltaLakeMetastore metastore = getMetastore(session, transaction);
+            return new TableChangesSplitSource(session, metastore, fileSystemFactory, tableFunctionHandle);
+        }
+        throw new UnsupportedOperationException("Unrecognized function: " + name);
     }
 
     private Stream<DeltaLakeSplit> getSplits(
