@@ -82,6 +82,11 @@ public class EqualityInference
         return rewrite(expression, scope::contains, true);
     }
 
+    public Expression rewrite(Expression expression, Set<Symbol> scope, boolean allowFullReplacement)
+    {
+        return rewrite(expression, scope::contains, allowFullReplacement);
+    }
+
     /**
      * Dumps the inference equalities as equality expressions that are partitioned by the symbolScope.
      * All stored equalities are returned in a compact set and will be classified into three groups as determined by the symbol scope:

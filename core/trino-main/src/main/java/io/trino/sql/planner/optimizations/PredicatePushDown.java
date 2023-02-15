@@ -1007,7 +1007,7 @@ public class PredicatePushDown
 
             // simplify predicate based on known equalities guaranteed by the left/right side
             EqualityInference assertions = EqualityInference.newInstance(metadata, leftEffectivePredicate, rightEffectivePredicate);
-            inheritedPredicate = assertions.rewrite(inheritedPredicate, Sets.union(leftScope, rightScope));
+            inheritedPredicate = assertions.rewrite(inheritedPredicate, Sets.union(leftScope, rightScope), false);
 
             // Generate equality inferences
             EqualityInference allInference = EqualityInference.newInstance(metadata, inheritedPredicate, leftEffectivePredicate, rightEffectivePredicate, joinPredicate, simplifiedLeftEffectivePredicate, simplifiedRightEffectivePredicate);
