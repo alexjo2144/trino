@@ -1001,9 +1001,9 @@ public class PredicatePushDown
 
             // Attempt to simplify the effective left/right predicates with the predicate we're pushing down
             // This, effectively, inlines any constants derived from such predicate
-            EqualityInference predicateInference = EqualityInference.newInstance(metadata, inheritedPredicate);
-            Expression simplifiedLeftEffectivePredicate = predicateInference.rewrite(leftEffectivePredicate, leftScope);
-            Expression simplifiedRightEffectivePredicate = predicateInference.rewrite(rightEffectivePredicate, rightScope);
+//            EqualityInference predicateInference = EqualityInference.newInstance(metadata, inheritedPredicate);
+            Expression simplifiedLeftEffectivePredicate = leftEffectivePredicate; // predicateInference.rewrite(leftEffectivePredicate, leftScope);
+            Expression simplifiedRightEffectivePredicate = rightEffectivePredicate; // predicateInference.rewrite(rightEffectivePredicate, rightScope);
 
             // simplify predicate based on known equalities guaranteed by the left/right side
             EqualityInference assertions = EqualityInference.newInstance(metadata, leftEffectivePredicate, rightEffectivePredicate);
