@@ -976,6 +976,21 @@ public abstract class BaseDeltaLakeMinioConnectorTest
     }
 
     @Test
+    public void testReadCdfOnLargerTable()
+    {
+        String tableName = "test_read_cdf_on_larger_table_" + randomNameSuffix();
+        assertUpdate("CREATE TABLE " + tableName + " WITH (change_data_feed_enabled = true) AS SELECT * FROM tpch.tiny.lineitem WITH NO DATA", "VALUES 0");
+        Session withSmallRowGroups = Session.builder(getSession())
+                .setCatalogSessionProperty(DELTA_CATALOG, "parquet_writer_page_size", "100B")
+                .setCatalogSessionProperty(DELTA_CATALOG, "parquet_writer_block_size", "100B")
+                .setCatalogSessionProperty(DELTA_CATALOG, "parquet_max_read_block_row_count", "128")
+                .build();
+        assertUpdate(withSmallRowGroups, "INSERT INTO " + tableName + " SELECT * FROM tpch.tiny.lineitem", "SELECT count(*) FROM lineitem");
+
+        assertQuery("SELECT count(*) FROM TABLE(system.table_changes('test_schema', '" + tableName + "'))", "SELECT count(*) FROM lineitem");
+    }
+
+    @Test
     public void testReadCdfChanges()
     {
         String tableName = "test_basic_operations_on_table_with_cdf_enabled_" + randomNameSuffix();
