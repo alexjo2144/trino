@@ -33,7 +33,7 @@ public final class EqualityDeleteFilter
     private final Schema schema;
     private final StructLikeSet deleteSet;
 
-    private EqualityDeleteFilter(Schema schema, StructLikeSet deleteSet)
+    public EqualityDeleteFilter(Schema schema, StructLikeSet deleteSet)
     {
         this.schema = requireNonNull(schema, "schema is null");
         this.deleteSet = requireNonNull(deleteSet, "deleteSet is null");
@@ -55,14 +55,11 @@ public final class EqualityDeleteFilter
         };
     }
 
-    public static DeleteFilter readEqualityDeletes(ConnectorPageSource pageSource, List<IcebergColumnHandle> columns, Schema tableSchema)
+    public static void readEqualityDeletes(StructLikeSet deleteSet, ConnectorPageSource pageSource, List<IcebergColumnHandle> columns)
     {
         Type[] types = columns.stream()
                 .map(IcebergColumnHandle::getType)
                 .toArray(Type[]::new);
-
-        Schema deleteSchema = schemaFromHandles(columns);
-        StructLikeSet deleteSet = StructLikeSet.create(deleteSchema.asStruct());
 
         while (!pageSource.isFinished()) {
             Page page = pageSource.getNextPage();
@@ -74,7 +71,5 @@ public final class EqualityDeleteFilter
                 deleteSet.add(new TrinoRow(types, page, position));
             }
         }
-
-        return new EqualityDeleteFilter(deleteSchema, deleteSet);
     }
 }
