@@ -19,12 +19,16 @@ import io.trino.filesystem.Location;
 import io.trino.hadoop.ConfigurationInstantiator;
 import io.trino.plugin.hive.HiveColumnHandle;
 import io.trino.plugin.hive.HiveConfig;
+import io.trino.plugin.hive.HiveFormatsConfig;
 import io.trino.plugin.hive.HiveRecordCursorProvider.ReaderRecordCursorWithProjections;
 import io.trino.plugin.hive.TestBackgroundHiveSplitLoader.TestingHdfsEnvironment;
+import io.trino.plugin.hive.orc.OrcReaderConfig;
+import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.Range;
 import io.trino.spi.predicate.SortedRangeSet;
 import io.trino.spi.predicate.TupleDomain;
+import io.trino.testing.TestingConnectorSession;
 import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
 import org.apache.hive.hcatalog.data.JsonSerDe;
 import org.testng.annotations.Test;
@@ -36,11 +40,19 @@ import java.util.Properties;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+<<<<<<< HEAD
 import static io.trino.plugin.hive.HiveColumnHandle.ColumnType.REGULAR;
 import static io.trino.plugin.hive.HiveColumnHandle.createBaseColumn;
 import static io.trino.plugin.hive.HiveTestUtils.SESSION;
 import static io.trino.plugin.hive.HiveType.HIVE_INT;
 import static io.trino.plugin.hive.HiveType.HIVE_STRING;
+=======
+import static io.trino.plugin.hive.HiveTestUtils.getHiveSessionProperties;
+import static io.trino.plugin.hive.s3select.TestS3SelectRecordCursor.ARTICLE_COLUMN;
+import static io.trino.plugin.hive.s3select.TestS3SelectRecordCursor.AUTHOR_COLUMN;
+import static io.trino.plugin.hive.s3select.TestS3SelectRecordCursor.DATE_ARTICLE_COLUMN;
+import static io.trino.plugin.hive.s3select.TestS3SelectRecordCursor.QUANTITY_COLUMN;
+>>>>>>> 4b7197f3a1 (Support S3 Select on native readers)
 import static io.trino.spi.predicate.TupleDomain.withColumnDomains;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.DateType.DATE;
@@ -161,6 +173,13 @@ public class TestS3SelectRecordCursorProvider
                                                                                List<HiveColumnHandle> readerColumns,
                                                                                boolean s3SelectPushdownEnabled)
     {
+        HiveFormatsConfig withoutNativeReaders = new HiveFormatsConfig()
+                .setCsvNativeReaderEnabled(false)
+                .setJsonNativeReaderEnabled(false);
+        ConnectorSession session = TestingConnectorSession.builder()
+                .setPropertyMetadata(getHiveSessionProperties(new HiveConfig(), new OrcReaderConfig(), withoutNativeReaders).getSessionProperties())
+                .build();
+
         S3SelectRecordCursorProvider s3SelectRecordCursorProvider = new S3SelectRecordCursorProvider(
                 new TestingHdfsEnvironment(new ArrayList<>()),
                 new TrinoS3ClientFactory(new HiveConfig()),
@@ -168,7 +187,7 @@ public class TestS3SelectRecordCursorProvider
 
         return s3SelectRecordCursorProvider.createRecordCursor(
                 ConfigurationInstantiator.newEmptyConfiguration(),
-                SESSION,
+                session,
                 Location.of("s3://fakeBucket/fakeObject.gz"),
                 0,
                 10,

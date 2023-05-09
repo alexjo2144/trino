@@ -229,7 +229,8 @@ public class HivePageSourceProvider
                     acidInfo,
                     tableBucketNumber,
                     originalFile,
-                    transaction);
+                    transaction,
+                    s3SelectPushdownEnabled);
 
             if (readerWithProjections.isPresent()) {
                 ConnectorPageSource pageSource = readerWithProjections.get().get();
