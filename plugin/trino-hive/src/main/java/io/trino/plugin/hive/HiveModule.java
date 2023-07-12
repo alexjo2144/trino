@@ -52,7 +52,7 @@ import io.trino.plugin.hive.parquet.ParquetPageSourceFactory;
 import io.trino.plugin.hive.parquet.ParquetReaderConfig;
 import io.trino.plugin.hive.parquet.ParquetWriterConfig;
 import io.trino.plugin.hive.rcfile.RcFilePageSourceFactory;
-import io.trino.plugin.hive.s3select.S3SelectPageSourceProvider;
+import io.trino.plugin.hive.s3select.S3SelectPageSourceFactory;
 import io.trino.plugin.hive.s3select.S3SelectRecordCursorProvider;
 import io.trino.plugin.hive.s3select.TrinoS3ClientFactory;
 import io.trino.spi.connector.ConnectorNodePartitioningProvider;
@@ -133,7 +133,7 @@ public class HiveModule
         configBinder(binder).bindConfig(HiveFormatsConfig.class);
 
         Multibinder<HivePageSourceFactory> pageSourceFactoryBinder = newSetBinder(binder, HivePageSourceFactory.class);
-        pageSourceFactoryBinder.addBinding().to(S3SelectPageSourceProvider.class).in(Scopes.SINGLETON);
+        pageSourceFactoryBinder.addBinding().to(S3SelectPageSourceFactory.class).in(Scopes.SINGLETON);
         pageSourceFactoryBinder.addBinding().to(CsvPageSourceFactory.class).in(Scopes.SINGLETON);
         pageSourceFactoryBinder.addBinding().to(JsonPageSourceFactory.class).in(Scopes.SINGLETON);
         pageSourceFactoryBinder.addBinding().to(OpenXJsonPageSourceFactory.class).in(Scopes.SINGLETON);
