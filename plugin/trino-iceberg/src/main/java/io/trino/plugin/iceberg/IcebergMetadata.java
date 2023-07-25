@@ -115,6 +115,7 @@ import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.ManifestFiles;
 import org.apache.iceberg.ManifestReader;
 import org.apache.iceberg.MetadataColumns;
+import org.apache.iceberg.OverwriteFiles;
 import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.PartitionSpecParser;
@@ -136,9 +137,11 @@ import org.apache.iceberg.UpdateProperties;
 import org.apache.iceberg.UpdateSchema;
 import org.apache.iceberg.UpdateStatistics;
 import org.apache.iceberg.exceptions.ValidationException;
+import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Term;
 import org.apache.iceberg.io.CloseableIterable;
+import org.apache.iceberg.io.CloseableIterator;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.types.Types.IntegerType;
@@ -2131,14 +2134,17 @@ public class IcebergMetadata
                 .filter(entry -> fileIsFullyDeleted(entry.getValue()))
                 .collect(toImmutableMap(Map.Entry::getKey, Map.Entry::getValue));
 
+        IsolationLevel isolationLevel = IsolationLevel.fromName(icebergTable.properties().getOrDefault(DELETE_ISOLATION_LEVEL, DELETE_ISOLATION_LEVEL_DEFAULT));
+        TupleDomain<IcebergColumnHandle> dataColumnPredicate = table.getEnforcedPredicate().filter((column, domain) -> !isMetadataColumnId(column.getId()));
+        Optional<Expression> conflictDetectionFilter = dataColumnPredicate.isAll() ?
+                Optional.empty() :
+                Optional.of(toIcebergExpression(dataColumnPredicate));
+
         if (!deletesByFilePath.keySet().equals(fullyDeletedFiles.keySet()) || commitTasks.stream().anyMatch(task -> task.getContent() == FileContent.DATA)) {
             RowDelta rowDelta = transaction.newRowDelta();
             table.getSnapshotId().map(icebergTable::snapshot).ifPresent(s -> rowDelta.validateFromSnapshot(s.snapshotId()));
-            TupleDomain<IcebergColumnHandle> dataColumnPredicate = table.getEnforcedPredicate().filter((column, domain) -> !isMetadataColumnId(column.getId()));
-            if (!dataColumnPredicate.isAll()) {
-                rowDelta.conflictDetectionFilter(toIcebergExpression(dataColumnPredicate));
-            }
-            IsolationLevel isolationLevel = IsolationLevel.fromName(icebergTable.properties().getOrDefault(DELETE_ISOLATION_LEVEL, DELETE_ISOLATION_LEVEL_DEFAULT));
+            conflictDetectionFilter.ifPresent(rowDelta::conflictDetectionFilter);
+
             if (isolationLevel == IsolationLevel.SERIALIZABLE) {
                 rowDelta.validateNoConflictingDataFiles();
             }
@@ -2222,9 +2228,27 @@ public class IcebergMetadata
 
         try {
             if (!fullyDeletedFiles.isEmpty()) {
-                DeleteFiles deleteFiles = transaction.newDelete();
-                fullyDeletedFiles.keySet().forEach(deleteFiles::deleteFile);
-                commit(deleteFiles, session);
+                OverwriteFiles overwriteFiles = transaction.newOverwrite();
+                TableScan tableScan = catalog.loadTable(session, table.getSchemaTableName()).newScan();
+                table.getSnapshotId().ifPresent(tableScan::useSnapshot);
+                try (CloseableIterable<FileScanTask> taskPlan = tableScan.planFiles(); CloseableIterator<FileScanTask> taskIterator = taskPlan.iterator()) {
+                    while (taskIterator.hasNext()) {
+                        DataFile file = taskIterator.next().file();
+                        if (fullyDeletedFiles.containsKey(file.path().toString())) {
+                            overwriteFiles.deleteFile(file);
+                        }
+                    }
+                }
+                catch (IOException e) {
+                    throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, "Unable to access file system while attempting to read the Iceberg manifest", e);
+                }
+
+                table.getSnapshotId().ifPresent(overwriteFiles::validateFromSnapshot);
+                conflictDetectionFilter.ifPresent(overwriteFiles::conflictDetectionFilter);
+                overwriteFiles.validateNoConflictingData();
+                overwriteFiles.validateNoConflictingDeletes();
+
+                commit(overwriteFiles, session);
             }
             transaction.commitTransaction();
         }

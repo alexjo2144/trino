@@ -88,6 +88,9 @@ import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -146,6 +149,7 @@ import static java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 import static java.util.Collections.nCopies;
 import static java.util.Objects.requireNonNull;
 import static java.util.UUID.randomUUID;
+import static java.util.concurrent.Executors.newFixedThreadPool;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.MINUTES;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -291,6 +295,72 @@ public abstract class BaseIcebergConnectorTest
                 .hasMessageStartingWith("Failed to add column: Failed to replace table due to concurrent updates")
                 .rootCause()
                 .hasMessageContaining("Cannot update Iceberg table: supplied previous location does not match current location");
+    }
+
+    // Repeat test with invocationCount for better test coverage, since the tested aspect is inherently non-deterministic.
+    @Test(timeOut = 60_000, invocationCount = 5)
+    public void testOptimizeDuringWriteOperations()
+            throws Exception
+    {
+        int threads = 5;
+        int deletionThreads = threads - 1;
+        int rows = 100;
+        CyclicBarrier barrier = new CyclicBarrier(threads);
+        ExecutorService executor = newFixedThreadPool(threads);
+        try (TestTable table = new TestTable(
+                getQueryRunner()::execute,
+                "test_optimize_during_write_operations",
+                "(int_col INT)")) {
+            String tableName = table.getName();
+            for (int i = 0; i < rows; i++) {
+                assertUpdate(format("INSERT INTO %s VALUES %s", tableName, i), 1);
+            }
+
+            int rowsPerThread = rows / deletionThreads;
+            List<Future<List<Boolean>>> deletionFutures = IntStream.range(0, deletionThreads)
+                    .mapToObj(threadNumber -> executor.submit(() -> {
+                        barrier.await(10, SECONDS);
+                        List<Boolean> successfulDeletes = new ArrayList<>();
+                        for (int i = 0; i < rowsPerThread; i++) {
+                            try {
+                                int rowNumber = threadNumber * rowsPerThread + i;
+                                getQueryRunner().execute(format("DELETE FROM %s WHERE int_col = %s", tableName, rowNumber));
+                                successfulDeletes.add(true);
+                            }
+                            catch (RuntimeException e) {
+                                successfulDeletes.add(false);
+                            }
+                        }
+                        return successfulDeletes;
+                    }))
+                    .collect(toImmutableList());
+
+            Future<?> optimizeFuture = executor.submit(() -> {
+                try {
+                    barrier.await(10, SECONDS);
+                    assertUpdate("ALTER TABLE %s EXECUTE optimize".formatted(tableName));
+                }
+                catch (Exception e) {
+                    throw new RuntimeException("Optimize must succeed for this test to validate the intended behavior", e);
+                }
+            });
+
+            int expectedRows = 0;
+            for (Future<List<Boolean>> future : deletionFutures) {
+                for (Boolean successfulDelete : future.get()) {
+                    if (!successfulDelete) {
+                        expectedRows++;
+                    }
+                }
+            }
+            optimizeFuture.get();
+            assertThat(expectedRows).isGreaterThan(0).isLessThan(rows);
+            assertQuery("SELECT count(*) FROM " + tableName, "VALUES " + expectedRows);
+        }
+        finally {
+            executor.shutdownNow();
+            executor.awaitTermination(10, SECONDS);
+        }
     }
 
     @Test
