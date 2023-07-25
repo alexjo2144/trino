@@ -2080,7 +2080,7 @@ public class IcebergMetadata
         IcebergMergeTableHandle mergeHandle = (IcebergMergeTableHandle) mergeTableHandle;
         IcebergTableHandle handle = mergeHandle.getTableHandle();
         RetryMode retryMode = mergeHandle.getInsertTableHandle().getRetryMode();
-        finishWrite(session, handle, fragments, true, retryMode);
+        finishWrite(session, handle, fragments, retryMode);
     }
 
     private static void verifyTableVersionForUpdate(IcebergTableHandle table)
@@ -2107,7 +2107,7 @@ public class IcebergMetadata
         }
     }
 
-    private void finishWrite(ConnectorSession session, IcebergTableHandle table, Collection<Slice> fragments, boolean runUpdateValidations, RetryMode retryMode)
+    private void finishWrite(ConnectorSession session, IcebergTableHandle table, Collection<Slice> fragments, RetryMode retryMode)
     {
         Table icebergTable = transaction.table();
 
@@ -2143,11 +2143,9 @@ public class IcebergMetadata
                 rowDelta.validateNoConflictingDataFiles();
             }
 
-            if (runUpdateValidations) {
-                // Ensure a row that is updated by this commit was not deleted by a separate commit
-                rowDelta.validateDeletedFiles();
-                rowDelta.validateNoConflictingDeleteFiles();
-            }
+            // Ensure a row that is updated by this commit was not deleted by a separate commit
+            rowDelta.validateDeletedFiles();
+            rowDelta.validateNoConflictingDeleteFiles();
 
             ImmutableSet.Builder<String> writtenFiles = ImmutableSet.builder();
             ImmutableSet.Builder<String> referencedDataFiles = ImmutableSet.builder();
@@ -2157,35 +2155,31 @@ public class IcebergMetadata
                         .map(field -> field.transform().getResultType(schema.findType(field.sourceId())))
                         .toArray(Type[]::new);
                 switch (task.getContent()) {
-                    case POSITION_DELETES:
+                    case POSITION_DELETES -> {
                         if (fullyDeletedFiles.containsKey(task.getReferencedDataFile().orElseThrow())) {
                             continue;
                         }
-
                         FileMetadata.Builder deleteBuilder = FileMetadata.deleteFileBuilder(partitionSpec)
                                 .withPath(task.getPath())
                                 .withFormat(task.getFileFormat().toIceberg())
                                 .ofPositionDeletes()
                                 .withFileSizeInBytes(task.getFileSizeInBytes())
                                 .withMetrics(task.getMetrics().metrics());
-
                         if (!partitionSpec.fields().isEmpty()) {
                             String partitionDataJson = task.getPartitionDataJson()
                                     .orElseThrow(() -> new VerifyException("No partition data for partitioned table"));
                             deleteBuilder.withPartition(PartitionData.fromJson(partitionDataJson, partitionColumnTypes));
                         }
-
                         rowDelta.addDeletes(deleteBuilder.build());
                         writtenFiles.add(task.getPath());
                         task.getReferencedDataFile().ifPresent(referencedDataFiles::add);
-                        break;
-                    case DATA:
+                    }
+                    case DATA -> {
                         DataFiles.Builder builder = DataFiles.builder(partitionSpec)
                                 .withPath(task.getPath())
                                 .withFormat(task.getFileFormat().toIceberg())
                                 .withFileSizeInBytes(task.getFileSizeInBytes())
                                 .withMetrics(task.getMetrics().metrics());
-
                         if (!icebergTable.spec().fields().isEmpty()) {
                             String partitionDataJson = task.getPartitionDataJson()
                                     .orElseThrow(() -> new VerifyException("No partition data for partitioned table"));
@@ -2193,9 +2187,8 @@ public class IcebergMetadata
                         }
                         rowDelta.addRows(builder.build());
                         writtenFiles.add(task.getPath());
-                        break;
-                    default:
-                        throw new UnsupportedOperationException("Unsupported task content: " + task.getContent());
+                    }
+                    default -> throw new UnsupportedOperationException("Unsupported task content: " + task.getContent());
                 }
             }
 
