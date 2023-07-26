@@ -328,6 +328,7 @@ public abstract class BaseIcebergConnectorTest
                                 successfulDeletes.add(true);
                             }
                             catch (RuntimeException e) {
+                                assertThat(e).hasMessageContaining("Failed to commit Iceberg update to table");
                                 successfulDeletes.add(false);
                             }
                         }
