@@ -58,7 +58,7 @@ public class IcebergPositionDeletePageSink
     private final JsonCodec<CommitTaskData> jsonCodec;
     private final IcebergFileWriter writer;
     private final IcebergFileFormat fileFormat;
-    private final long fileRecordCount;
+    private final MetricsWrapper metrics;
     private final long fileSize;
 
     private long validationCpuNanos;
@@ -76,7 +76,7 @@ public class IcebergPositionDeletePageSink
             ConnectorSession session,
             IcebergFileFormat fileFormat,
             Map<String, String> storageProperties,
-            long fileRecordCount,
+            MetricsWrapper metrics,
             long fileSize)
     {
         this.dataFilePath = requireNonNull(dataFilePath, "dataFilePath is null");
@@ -84,7 +84,7 @@ public class IcebergPositionDeletePageSink
         this.partitionSpec = requireNonNull(partitionSpec, "partitionSpec is null");
         this.partition = requireNonNull(partition, "partition is null");
         this.fileFormat = requireNonNull(fileFormat, "fileFormat is null");
-        this.fileRecordCount = fileRecordCount;
+        this.metrics = requireNonNull(metrics, "metrics is null");
         this.fileSize = fileSize;
         // prepend query id to a file name so we can determine which files were written by which query. This is needed for opportunistic cleanup of extra files
         // which may be present for successfully completing query in presence of failure recovery mechanisms.
@@ -143,8 +143,8 @@ public class IcebergPositionDeletePageSink
                     partition.map(PartitionData::toJson),
                     FileContent.POSITION_DELETES,
                     Optional.of(dataFilePath),
+                    Optional.of(metrics),
                     Optional.of(fileSize),
-                    Optional.of(fileRecordCount),
                     Optional.of(deletedRowCount));
             Long recordCount = task.getMetrics().recordCount();
             if (recordCount != null && recordCount > 0) {

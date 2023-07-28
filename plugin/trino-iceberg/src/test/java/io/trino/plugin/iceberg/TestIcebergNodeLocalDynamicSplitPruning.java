@@ -46,6 +46,7 @@ import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.type.Type;
 import io.trino.testing.TestingConnectorSession;
+import org.apache.iceberg.Metrics;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.PartitionSpecParser;
 import org.apache.iceberg.Schema;
@@ -160,7 +161,7 @@ public class TestIcebergNodeLocalDynamicSplitPruning
                 0,
                 inputFile.length(),
                 inputFile.length(),
-                0, // This is incorrect, but the value is only used for delete operations
+                new MetricsWrapper(new Metrics()), // This is incorrect, but the value is only used for delete operations
                 ORC,
                 PartitionSpecParser.toJson(PartitionSpec.unpartitioned()),
                 PartitionData.toJson(new PartitionData(new Object[] {})),

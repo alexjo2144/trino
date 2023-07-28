@@ -13,14 +13,18 @@
  */
 package io.trino.plugin.iceberg;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.json.JsonCodec;
+import io.airlift.json.ObjectMapperProvider;
 import io.airlift.slice.Slice;
 import io.trino.filesystem.TrinoFileSystem;
 import io.trino.plugin.iceberg.delete.IcebergPositionDeletePageSink;
 import io.trino.spi.Page;
 import io.trino.spi.PageBuilder;
+import io.trino.spi.TrinoException;
 import io.trino.spi.block.ColumnarRow;
 import io.trino.spi.connector.ConnectorMergeSink;
 import io.trino.spi.connector.ConnectorPageSink;
@@ -44,6 +48,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static io.trino.plugin.base.util.Closables.closeAllSuppress;
+import static io.trino.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static io.trino.spi.block.ColumnarRow.toColumnarRow;
 import static io.trino.spi.connector.MergePage.createDeleteAndInsertPages;
 import static io.trino.spi.type.BigintType.BIGINT;
@@ -66,6 +71,8 @@ public class IcebergMergeSink
     private final ConnectorPageSink insertPageSink;
     private final int columnCount;
     private final Map<Slice, FileDeletion> fileDeletions = new HashMap<>();
+
+    private final ObjectMapper objectMapper = new ObjectMapperProvider().get();
 
     public IcebergMergeSink(
             LocationProvider locationProvider,
@@ -109,11 +116,11 @@ public class IcebergMergeSink
 
                 int index = position;
                 FileDeletion deletion = fileDeletions.computeIfAbsent(filePath, ignored -> {
-                    long fileRecordCount = BIGINT.getLong(rowIdRow.getField(2), index);
+                    String fileMetrics = VarcharType.VARCHAR.getSlice(rowIdRow.getField(2), index).toStringUtf8();
                     long fileSize = BIGINT.getLong(rowIdRow.getField(3), index);
                     int partitionSpecId = INTEGER.getInt(rowIdRow.getField(4), index);
                     String partitionData = VarcharType.VARCHAR.getSlice(rowIdRow.getField(5), index).toStringUtf8();
-                    return new FileDeletion(partitionSpecId, partitionData, fileRecordCount, fileSize);
+                    return new FileDeletion(partitionSpecId, partitionData, fileMetrics, fileSize);
                 });
 
                 deletion.rowsToDelete().addLong(rowPosition);
@@ -127,14 +134,19 @@ public class IcebergMergeSink
         List<Slice> fragments = new ArrayList<>(insertPageSink.finish().join());
 
         fileDeletions.forEach((dataFilePath, deletion) -> {
-            ConnectorPageSink sink = createPositionDeletePageSink(
-                    dataFilePath.toStringUtf8(),
-                    partitionsSpecs.get(deletion.partitionSpecId()),
-                    deletion.partitionDataJson(),
-                    deletion.fileRecordCount(),
-                    deletion.fileSize());
+            try {
+                ConnectorPageSink sink = createPositionDeletePageSink(
+                        dataFilePath.toStringUtf8(),
+                        partitionsSpecs.get(deletion.partitionSpecId()),
+                        deletion.partitionDataJson(),
+                        objectMapper.readValue(deletion.metrics(), MetricsWrapper.class),
+                        deletion.fileSize());
 
-            fragments.addAll(writePositionDeletes(sink, deletion.rowsToDelete()));
+                fragments.addAll(writePositionDeletes(sink, deletion.rowsToDelete()));
+            }
+            catch (JsonProcessingException e) {
+                throw new TrinoException(GENERIC_INTERNAL_ERROR, "Failed to parse serialized value for MetricsWrapper", e);
+            }
         });
 
         return completedFuture(fragments);
@@ -146,7 +158,7 @@ public class IcebergMergeSink
         insertPageSink.abort();
     }
 
-    private ConnectorPageSink createPositionDeletePageSink(String dataFilePath, PartitionSpec partitionSpec, String partitionDataJson, long fileRecordCount, long fileSize)
+    private ConnectorPageSink createPositionDeletePageSink(String dataFilePath, PartitionSpec partitionSpec, String partitionDataJson, MetricsWrapper metrics, long fileSize)
     {
         Optional<PartitionData> partitionData = Optional.empty();
         if (partitionSpec.isPartitioned()) {
@@ -167,7 +179,7 @@ public class IcebergMergeSink
                 session,
                 fileFormat,
                 storageProperties,
-                fileRecordCount,
+                metrics,
                 fileSize);
     }
 
@@ -206,15 +218,15 @@ public class IcebergMergeSink
     {
         private final int partitionSpecId;
         private final String partitionDataJson;
-        private final long fileRecordCount;
+        private final String metrics;
         private final long fileSize;
         private final LongBitmapDataProvider rowsToDelete = new Roaring64Bitmap();
 
-        public FileDeletion(int partitionSpecId, String partitionDataJson, long fileRecordCount, long fileSize)
+        public FileDeletion(int partitionSpecId, String partitionDataJson, String metrics, long fileSize)
         {
             this.partitionSpecId = partitionSpecId;
             this.partitionDataJson = requireNonNull(partitionDataJson, "partitionDataJson is null");
-            this.fileRecordCount = fileRecordCount;
+            this.metrics = requireNonNull(metrics, "metrics is null");
             this.fileSize = fileSize;
         }
 
@@ -228,14 +240,14 @@ public class IcebergMergeSink
             return partitionDataJson;
         }
 
-        public long fileRecordCount()
-        {
-            return fileRecordCount;
-        }
-
         public long fileSize()
         {
             return fileSize;
+        }
+
+        public String metrics()
+        {
+            return metrics;
         }
 
         public LongBitmapDataProvider rowsToDelete()

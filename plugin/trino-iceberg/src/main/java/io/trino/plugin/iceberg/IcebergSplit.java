@@ -40,7 +40,7 @@ public class IcebergSplit
     private final long start;
     private final long length;
     private final long fileSize;
-    private final long fileRecordCount;
+    private final MetricsWrapper metrics;
     private final IcebergFileFormat fileFormat;
     private final String partitionSpecJson;
     private final String partitionDataJson;
@@ -53,7 +53,7 @@ public class IcebergSplit
             @JsonProperty("start") long start,
             @JsonProperty("length") long length,
             @JsonProperty("fileSize") long fileSize,
-            @JsonProperty("fileRecordCount") long fileRecordCount,
+            @JsonProperty("metrics") MetricsWrapper metrics,
             @JsonProperty("fileFormat") IcebergFileFormat fileFormat,
             @JsonProperty("partitionSpecJson") String partitionSpecJson,
             @JsonProperty("partitionDataJson") String partitionDataJson,
@@ -64,7 +64,7 @@ public class IcebergSplit
         this.start = start;
         this.length = length;
         this.fileSize = fileSize;
-        this.fileRecordCount = fileRecordCount;
+        this.metrics = requireNonNull(metrics, "metrics is null");
         this.fileFormat = requireNonNull(fileFormat, "fileFormat is null");
         this.partitionSpecJson = requireNonNull(partitionSpecJson, "partitionSpecJson is null");
         this.partitionDataJson = requireNonNull(partitionDataJson, "partitionDataJson is null");
@@ -110,9 +110,9 @@ public class IcebergSplit
     }
 
     @JsonProperty
-    public long getFileRecordCount()
+    public MetricsWrapper getMetrics()
     {
-        return fileRecordCount;
+        return metrics;
     }
 
     @JsonProperty
@@ -174,7 +174,7 @@ public class IcebergSplit
                 .addValue(path)
                 .add("start", start)
                 .add("length", length)
-                .add("records", fileRecordCount);
+                .add("records", metrics.recordCount());
         if (!deletes.isEmpty()) {
             helper.add("deleteFiles", deletes.size());
             helper.add("deleteRecords", deletes.stream()

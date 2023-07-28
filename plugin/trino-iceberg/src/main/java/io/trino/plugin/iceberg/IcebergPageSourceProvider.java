@@ -13,6 +13,7 @@
  */
 package io.trino.plugin.iceberg;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Suppliers;
 import com.google.common.base.VerifyException;
 import com.google.common.collect.AbstractIterator;
@@ -23,6 +24,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.graph.Traverser;
 import com.google.inject.Inject;
+import io.airlift.json.ObjectMapperProvider;
 import io.airlift.slice.Slice;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
@@ -141,7 +143,7 @@ import static io.trino.parquet.ParquetTypeUtils.getColumnIO;
 import static io.trino.parquet.ParquetTypeUtils.getDescriptors;
 import static io.trino.parquet.predicate.PredicateUtils.buildPredicate;
 import static io.trino.parquet.predicate.PredicateUtils.predicateMatches;
-import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_FILE_RECORD_COUNT;
+import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_FILE_METRICS;
 import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_FILE_SIZE;
 import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_PARTITION_DATA;
 import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_PARTITION_SPEC_ID;
@@ -201,6 +203,8 @@ public class IcebergPageSourceProvider
         implements ConnectorPageSourceProvider
 {
     private static final String AVRO_FIELD_ID = "field-id";
+
+    private final ObjectMapper objectMapper = new ObjectMapperProvider().get();
 
     private final TrinoFileSystemFactory fileSystemFactory;
     private final FileFormatDataSourceStats fileFormatDataSourceStats;
@@ -272,8 +276,8 @@ public class IcebergPageSourceProvider
                         else if (identity.getId() == ROW_POSITION.fieldId()) {
                             requiredColumns.add(new IcebergColumnHandle(identity, BIGINT, ImmutableList.of(), BIGINT, Optional.empty()));
                         }
-                        else if (identity.getId() == TRINO_MERGE_FILE_RECORD_COUNT) {
-                            requiredColumns.add(new IcebergColumnHandle(identity, BIGINT, ImmutableList.of(), BIGINT, Optional.empty()));
+                        else if (identity.getId() == TRINO_MERGE_FILE_METRICS) {
+                            requiredColumns.add(new IcebergColumnHandle(identity, VARCHAR, ImmutableList.of(), VARCHAR, Optional.empty()));
                         }
                         else if (identity.getId() == TRINO_MERGE_FILE_SIZE) {
                             requiredColumns.add(new IcebergColumnHandle(identity, BIGINT, ImmutableList.of(), BIGINT, Optional.empty()));
@@ -307,7 +311,7 @@ public class IcebergPageSourceProvider
                 inputfile,
                 split.getStart(),
                 split.getLength(),
-                split.getFileRecordCount(),
+                split.getMetrics(),
                 partitionSpec.specId(),
                 split.getPartitionDataJson(),
                 split.getFileFormat(),
@@ -453,7 +457,14 @@ public class IcebergPageSourceProvider
                 fileSystem.newInputFile(Location.of(delete.path()), delete.fileSizeInBytes()),
                 0,
                 delete.fileSizeInBytes(),
-                delete.recordCount(),
+                new MetricsWrapper(
+                        delete.recordCount(),
+                        ImmutableMap.of(),
+                        ImmutableMap.of(),
+                        ImmutableMap.of(),
+                        ImmutableMap.of(),
+                        ImmutableMap.of(),
+                        ImmutableMap.of()),
                 0,
                 "",
                 IcebergFileFormat.fromIceberg(delete.format()),
@@ -471,7 +482,7 @@ public class IcebergPageSourceProvider
             TrinoInputFile inputFile,
             long start,
             long length,
-            long fileRecordCount,
+            MetricsWrapper metrics,
             int partitionSpecId,
             String partitionData,
             IcebergFileFormat fileFormat,
@@ -487,7 +498,7 @@ public class IcebergPageSourceProvider
                         inputFile,
                         start,
                         length,
-                        fileRecordCount,
+                        metrics,
                         partitionSpecId,
                         partitionData,
                         dataColumns,
@@ -503,6 +514,7 @@ public class IcebergPageSourceProvider
                                 .withBloomFiltersEnabled(isOrcBloomFiltersEnabled(session)),
                         fileFormatDataSourceStats,
                         typeManager,
+                        objectMapper,
                         nameMapping,
                         partitionKeys);
             case PARQUET:
@@ -510,7 +522,7 @@ public class IcebergPageSourceProvider
                         inputFile,
                         start,
                         length,
-                        fileRecordCount,
+                        metrics,
                         partitionSpecId,
                         partitionData,
                         dataColumns,
@@ -522,6 +534,7 @@ public class IcebergPageSourceProvider
                                 .withBatchNestedColumnReaders(isParquetOptimizedNestedReaderEnabled(session)),
                         predicate,
                         fileFormatDataSourceStats,
+                        objectMapper,
                         nameMapping,
                         partitionKeys);
             case AVRO:
@@ -529,10 +542,11 @@ public class IcebergPageSourceProvider
                         inputFile,
                         start,
                         length,
-                        fileRecordCount,
+                        metrics,
                         partitionSpecId,
                         partitionData,
                         fileSchema,
+                        objectMapper,
                         nameMapping,
                         dataColumns);
             default:
@@ -544,7 +558,7 @@ public class IcebergPageSourceProvider
             TrinoInputFile inputFile,
             long start,
             long length,
-            long fileRecordCount,
+            MetricsWrapper metrics,
             int partitionSpecId,
             String partitionData,
             List<IcebergColumnHandle> columns,
@@ -552,6 +566,7 @@ public class IcebergPageSourceProvider
             OrcReaderOptions options,
             FileFormatDataSourceStats stats,
             TypeManager typeManager,
+            ObjectMapper objectMapper,
             Optional<NameMapping> nameMapping,
             Map<Integer, Optional<String>> partitionKeys)
     {
@@ -616,8 +631,8 @@ public class IcebergPageSourceProvider
                 else if (column.isRowPositionColumn()) {
                     columnAdaptations.add(ColumnAdaptation.positionColumn());
                 }
-                else if (column.getId() == TRINO_MERGE_FILE_RECORD_COUNT) {
-                    columnAdaptations.add(ColumnAdaptation.constantColumn(nativeValueToBlock(column.getType(), fileRecordCount)));
+                else if (column.getId() == TRINO_MERGE_FILE_METRICS) {
+                    columnAdaptations.add(ColumnAdaptation.constantColumn(nativeValueToBlock(column.getType(), utf8Slice(objectMapper.writeValueAsString(metrics)))));
                 }
                 else if (column.getId() == TRINO_MERGE_FILE_SIZE) {
                     columnAdaptations.add(ColumnAdaptation.constantColumn(nativeValueToBlock(column.getType(), inputFile.length())));
@@ -889,13 +904,14 @@ public class IcebergPageSourceProvider
             TrinoInputFile inputFile,
             long start,
             long length,
-            long fileRecordCount,
+            MetricsWrapper metrics,
             int partitionSpecId,
             String partitionData,
             List<IcebergColumnHandle> regularColumns,
             ParquetReaderOptions options,
             TupleDomain<IcebergColumnHandle> effectivePredicate,
             FileFormatDataSourceStats fileFormatDataSourceStats,
+            ObjectMapper objectMapper,
             Optional<NameMapping> nameMapping,
             Map<Integer, Optional<String>> partitionKeys)
     {
@@ -980,8 +996,8 @@ public class IcebergPageSourceProvider
                 else if (column.isRowPositionColumn()) {
                     pageSourceBuilder.addRowIndexColumn();
                 }
-                else if (column.getId() == TRINO_MERGE_FILE_RECORD_COUNT) {
-                    pageSourceBuilder.addConstantColumn(nativeValueToBlock(column.getType(), fileRecordCount));
+                else if (column.getId() == TRINO_MERGE_FILE_METRICS) {
+                    pageSourceBuilder.addConstantColumn(nativeValueToBlock(column.getType(), utf8Slice(objectMapper.writeValueAsString(metrics))));
                 }
                 else if (column.getId() == TRINO_MERGE_FILE_SIZE) {
                     pageSourceBuilder.addConstantColumn(nativeValueToBlock(column.getType(), inputFile.length()));
@@ -1095,10 +1111,11 @@ public class IcebergPageSourceProvider
             TrinoInputFile inputFile,
             long start,
             long length,
-            long fileRecordCount,
+            MetricsWrapper metrics,
             int partitionSpecId,
             String partitionData,
             Schema fileSchema,
+            ObjectMapper objectMapper,
             Optional<NameMapping> nameMapping,
             List<IcebergColumnHandle> columns)
     {
@@ -1156,8 +1173,8 @@ public class IcebergPageSourceProvider
                     constantPopulatingPageSourceBuilder.addDelegateColumn(avroSourceChannel);
                     avroSourceChannel++;
                 }
-                else if (column.getId() == TRINO_MERGE_FILE_RECORD_COUNT) {
-                    constantPopulatingPageSourceBuilder.addConstantColumn(nativeValueToBlock(column.getType(), fileRecordCount));
+                else if (column.getId() == TRINO_MERGE_FILE_METRICS) {
+                    constantPopulatingPageSourceBuilder.addConstantColumn(nativeValueToBlock(column.getType(), utf8Slice(objectMapper.writeValueAsString(metrics))));
                 }
                 else if (column.getId() == TRINO_MERGE_FILE_SIZE) {
                     constantPopulatingPageSourceBuilder.addConstantColumn(nativeValueToBlock(column.getType(), inputFile.length()));

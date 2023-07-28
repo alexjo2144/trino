@@ -200,9 +200,10 @@ public class IcebergSplitSource
             // If the Dynamic Filter will be evaluated against each file, stats are required. Otherwise, skip them.
             boolean requiresColumnStats = usedSimplifiedPredicate || !dynamicFilterIsComplete;
             TableScan scan = tableScan.filter(filterExpression);
-            if (requiresColumnStats) {
-                scan = scan.includeColumnStats();
-            }
+            scan = scan.includeColumnStats();
+//            if (requiresColumnStats) {
+//                scan = scan.includeColumnStats();
+//            }
             this.fileScanIterable = closer.register(scan.planFiles());
             this.targetSplitSize = tableScan.targetSplitSize();
             this.fileScanIterator = closer.register(fileScanIterable.iterator());
@@ -463,7 +464,14 @@ public class IcebergSplitSource
                 task.start(),
                 task.length(),
                 task.file().fileSizeInBytes(),
-                task.file().recordCount(),
+                new MetricsWrapper(
+                        task.file().recordCount(),
+                        task.file().columnSizes(),
+                        task.file().valueCounts(),
+                        task.file().nullValueCounts(),
+                        task.file().nanValueCounts(),
+                        task.file().lowerBounds(),
+                        task.file().upperBounds()),
                 IcebergFileFormat.fromIceberg(task.file().format()),
                 PartitionSpecParser.toJson(task.spec()),
                 PartitionData.toJson(task.file().partition()),

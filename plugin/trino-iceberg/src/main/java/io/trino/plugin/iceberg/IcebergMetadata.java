@@ -114,7 +114,6 @@ import org.apache.iceberg.ManifestFile;
 import org.apache.iceberg.ManifestFiles;
 import org.apache.iceberg.ManifestReader;
 import org.apache.iceberg.MetadataColumns;
-import org.apache.iceberg.Metrics;
 import org.apache.iceberg.OverwriteFiles;
 import org.apache.iceberg.PartitionField;
 import org.apache.iceberg.PartitionSpec;
@@ -193,7 +192,7 @@ import static io.trino.plugin.hive.util.HiveUtil.isStructuralType;
 import static io.trino.plugin.iceberg.ConstraintExtractor.extractTupleDomain;
 import static io.trino.plugin.iceberg.ExpressionConverter.toIcebergExpression;
 import static io.trino.plugin.iceberg.IcebergAnalyzeProperties.getColumnNames;
-import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_FILE_RECORD_COUNT;
+import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_FILE_METRICS;
 import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_FILE_SIZE;
 import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_PARTITION_DATA;
 import static io.trino.plugin.iceberg.IcebergColumnHandle.TRINO_MERGE_PARTITION_SPEC_ID;
@@ -2046,7 +2045,7 @@ public class IcebergMetadata
         StructType type = StructType.of(ImmutableList.<NestedField>builder()
                 .add(MetadataColumns.FILE_PATH)
                 .add(MetadataColumns.ROW_POSITION)
-                .add(NestedField.required(TRINO_MERGE_FILE_RECORD_COUNT, "file_record_count", LongType.get()))
+                .add(NestedField.required(TRINO_MERGE_FILE_METRICS, "file_metrics", StringType.get()))
                 .add(NestedField.required(TRINO_MERGE_FILE_SIZE, "file_size", LongType.get()))
                 .add(NestedField.required(TRINO_MERGE_PARTITION_SPEC_ID, "partition_spec_id", IntegerType.get()))
                 .add(NestedField.required(TRINO_MERGE_PARTITION_DATA, "partition_data", StringType.get()))
@@ -2170,14 +2169,8 @@ public class IcebergMetadata
                         if (seenFullyDeletedDataFiles.add(referencedDataFile)) {
                             fullyDeletedDataFiles.add(DataFiles.builder(partitionSpec)
                                     .withPath(referencedDataFile)
-                                    .withFormat(task.getFileFormat().toIceberg())
                                     .withFileSizeInBytes(task.getReferencedDataFileSize().orElseThrow())
-                                    .withMetrics(new Metrics(
-                                            task.getFileRecordCount().orElseThrow(),
-                                            ImmutableMap.of(),
-                                            ImmutableMap.of(),
-                                            ImmutableMap.of(),
-                                            ImmutableMap.of()))
+                                    .withMetrics(task.getReferencedDataFileMetrics().orElseThrow().metrics())
                                     .build());
                         }
 
@@ -2262,10 +2255,10 @@ public class IcebergMetadata
     {
         checkArgument(!positionDeletes.isEmpty(), "Cannot call fileIsFullyDeletes with an empty list");
         String referencedDataFile = positionDeletes.get(0).getReferencedDataFile().orElseThrow();
-        long fileRecordCount = positionDeletes.get(0).getFileRecordCount().orElseThrow();
+        long fileRecordCount = positionDeletes.get(0).getReferencedDataFileMetrics().orElseThrow().recordCount();
         checkArgument(positionDeletes.stream().allMatch(positionDelete ->
                         positionDelete.getReferencedDataFile().orElseThrow().equals(referencedDataFile) &&
-                                positionDelete.getFileRecordCount().orElseThrow() == fileRecordCount),
+                                positionDelete.getReferencedDataFileMetrics().orElseThrow().recordCount() == fileRecordCount),
                 "All position deletes must be for the same file and have the same fileRecordCount");
         long deletedRowCount = positionDeletes.stream()
                 .map(CommitTaskData::getDeletedRowCount)

@@ -147,6 +147,9 @@ public class TestIcebergStatistics
         assertUpdate("UPDATE " + tableName + " SET info = format('%s %s', name, comment)", 25);
         assertUpdate("ALTER TABLE " + tableName + " DROP COLUMN comment");
 
+        computeActual("CREATE TABLE real_value (nationkey, regionkey, name, info) AS SELECT nationkey, regionkey, name, format('%s %s', name, comment) FROM nation");
+        computeActual("ANALYZE real_value");
+
         // schema changed, ANALYZE hasn't been re-run yet
         assertQuery(
                 "SHOW STATS FOR " + tableName,

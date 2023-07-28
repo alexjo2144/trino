@@ -32,8 +32,8 @@ public class CommitTaskData
     private final Optional<String> partitionDataJson;
     private final FileContent content;
     private final Optional<String> referencedDataFile;
+    private final Optional<MetricsWrapper> referencedDataFileMetrics;
     private final Optional<Long> referencedDataFileSize;
-    private final Optional<Long> fileRecordCount;
     private final Optional<Long> deletedRowCount;
 
     @JsonCreator
@@ -46,8 +46,8 @@ public class CommitTaskData
             @JsonProperty("partitionDataJson") Optional<String> partitionDataJson,
             @JsonProperty("content") FileContent content,
             @JsonProperty("referencedDataFile") Optional<String> referencedDataFile,
+            @JsonProperty("referencedDataFileMetrics") Optional<MetricsWrapper> referencedDataFileMetrics,
             @JsonProperty("referencedDataFileSize") Optional<Long> referencedDataFileSize,
-            @JsonProperty("fileRecordCount") Optional<Long> fileRecordCount,
             @JsonProperty("deletedRowCount") Optional<Long> deletedRowCount)
     {
         this.path = requireNonNull(path, "path is null");
@@ -58,12 +58,12 @@ public class CommitTaskData
         this.partitionDataJson = requireNonNull(partitionDataJson, "partitionDataJson is null");
         this.content = requireNonNull(content, "content is null");
         this.referencedDataFile = requireNonNull(referencedDataFile, "referencedDataFile is null");
+        this.referencedDataFileMetrics = requireNonNull(referencedDataFileMetrics, "referencedDataFileMetrics is null");
         this.referencedDataFileSize = requireNonNull(referencedDataFileSize, "referencedDataFileSize is null");
-        this.fileRecordCount = requireNonNull(fileRecordCount, "fileRecordCount is null");
-        fileRecordCount.ifPresent(rowCount -> checkArgument(rowCount >= 0, "fileRecordCount cannot be negative"));
+        referencedDataFileMetrics.ifPresent(metricsWrapper -> checkArgument(metricsWrapper.recordCount() >= 0, "referencedDataFileMetrics#recordCount cannot be negative"));
         this.deletedRowCount = requireNonNull(deletedRowCount, "deletedRowCount is null");
         deletedRowCount.ifPresent(rowCount -> checkArgument(rowCount >= 0, "deletedRowCount cannot be negative"));
-        checkArgument(fileRecordCount.isPresent() == deletedRowCount.isPresent(), "fileRecordCount and deletedRowCount must be specified together");
+        checkArgument(referencedDataFileMetrics.isPresent() == deletedRowCount.isPresent(), "referencedDataFileMetrics and deletedRowCount must be specified together");
         checkArgument(fileSizeInBytes >= 0, "fileSizeInBytes is negative");
     }
 
@@ -116,15 +116,15 @@ public class CommitTaskData
     }
 
     @JsonProperty
-    public Optional<Long> getReferencedDataFileSize()
+    public Optional<MetricsWrapper> getReferencedDataFileMetrics()
     {
-        return referencedDataFileSize;
+        return referencedDataFileMetrics;
     }
 
     @JsonProperty
-    public Optional<Long> getFileRecordCount()
+    public Optional<Long> getReferencedDataFileSize()
     {
-        return fileRecordCount;
+        return referencedDataFileSize;
     }
 
     @JsonProperty
