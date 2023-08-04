@@ -1,12 +1,11 @@
 package io.trino.filesystem.s3;
 
 import io.trino.filesystem.Location;
-import io.trino.filesystem.TrinoInput;
 import io.trino.spi.StandardErrorCode;
 import io.trino.spi.TrinoException;
-import software.amazon.awssdk.core.exception.AbortedException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.EndEvent;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.RecordsEvent;
@@ -15,11 +14,9 @@ import software.amazon.awssdk.services.s3.model.SelectObjectContentRequest;
 import software.amazon.awssdk.services.s3.model.SelectObjectContentResponseHandler;
 
 import java.io.ByteArrayInputStream;
-import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InterruptedIOException;
 import java.io.SequenceInputStream;
 import java.util.ArrayDeque;
 import java.util.Enumeration;
@@ -30,86 +27,34 @@ import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-import static java.util.Objects.checkFromIndexSize;
 import static java.util.Objects.requireNonNull;
 
 public class S3SelectInput
-        implements TrinoInput
+        extends AbstractS3Input<SelectObjectContentRequest>
 {
-    private final Location location;
-    private final S3AsyncClient client;
+    private final S3AsyncClient asyncClient;
     private final SelectObjectContentRequest request;
-    private boolean closed;
 
-    public S3SelectInput(Location location, S3AsyncClient client, SelectObjectContentRequest request)
+    public S3SelectInput(Location location, S3Client client, S3AsyncClient asyncClient, SelectObjectContentRequest request)
     {
-        this.location = requireNonNull(location, "location is null");
-        this.client = requireNonNull(client, "client is null");
+        super(location, client);
+        this.asyncClient = requireNonNull(asyncClient, "asyncClient is null");
         this.request = requireNonNull(request, "request is null");
     }
 
     @Override
-    public void readFully(long position, byte[] buffer, int offset, int length)
-            throws IOException
+    SelectObjectContentRequest getRequest(Optional<Long> position, long length)
     {
-        ensureOpen();
-        if (position < 0) {
-            throw new IOException("Negative seek offset");
-        }
-        checkFromIndexSize(offset, length, buffer.length);
-        if (length == 0) {
-            return;
-        }
-
-        ScanRange scanRange = ScanRange.builder()
-                .start(position)
-                .end(position + length - 1)
+        ScanRange.Builder scanRange = ScanRange.builder()
+                .end(position.orElse(0L) + length - 1);
+        position.ifPresent(scanRange::start);
+        return request.toBuilder()
+                .scanRange(scanRange.build())
                 .build();
-        SelectObjectContentRequest rangeRequest = request.toBuilder().scanRange(scanRange).build();
-
-        try (InputStream in = getObject(rangeRequest)) {
-            int n = readNBytes(in, buffer, offset, length);
-            if (n < length) {
-                throw new EOFException("Read %s of %s requested bytes: %s".formatted(n, length, location));
-            }
-        }
     }
 
     @Override
-    public int readTail(byte[] buffer, int offset, int length)
-            throws IOException
-    {
-        ensureOpen();
-        checkFromIndexSize(offset, length, buffer.length);
-        if (length == 0) {
-            return 0;
-        }
-
-        ScanRange scanRange = ScanRange.builder()
-                .end((long) length)
-                .build();
-        SelectObjectContentRequest rangeRequest = request.toBuilder().scanRange(scanRange).build();
-
-        try (InputStream in = getObject(rangeRequest)) {
-            return readNBytes(in, buffer, offset, length);
-        }
-    }
-
-    @Override
-    public void close()
-    {
-        closed = true;
-    }
-
-    private void ensureOpen()
-            throws IOException
-    {
-        if (closed) {
-            throw new IOException("Input closed: " + location);
-        }
-    }
-
-    private InputStream getObject(SelectObjectContentRequest request)
+    protected InputStream streamForRequest(SelectObjectContentRequest request, S3Client client, Location location)
             throws IOException
     {
         try {
@@ -131,7 +76,7 @@ public class S3SelectInput
                 }
             };
 
-            client.selectObjectContent(request, SelectObjectContentResponseHandler.builder().subscriber(visitor).build());
+            asyncClient.selectObjectContent(request, SelectObjectContentResponseHandler.builder().subscriber(visitor).build());
             return recordInputStream;
         }
         catch (NoSuchKeyException e) {
@@ -139,17 +84,6 @@ public class S3SelectInput
         }
         catch (SdkException e) {
             throw new IOException("Failed to open S3 file: " + location, e);
-        }
-    }
-
-    private static int readNBytes(InputStream in, byte[] buffer, int offset, int length)
-            throws IOException
-    {
-        try {
-            return in.readNBytes(buffer, offset, length);
-        }
-        catch (AbortedException e) {
-            throw new InterruptedIOException();
         }
     }
 

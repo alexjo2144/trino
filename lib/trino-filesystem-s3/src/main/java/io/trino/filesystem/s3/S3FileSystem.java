@@ -77,7 +77,7 @@ public final class S3FileSystem
 
     public TrinoInputFile newS3SelectInputFile(Location location, String query, boolean enableScanRange, InputSerialization inputSerialization, OutputSerialization outputSerialization)
     {
-        return new S3SelectInputFile(client, asyncClient, context, new S3Location(location), query, enableScanRange, inputSerialization, outputSerialization);
+        return new S3SelectInputFile(client, asyncClient, context, new S3Location(location), query, inputSerialization, outputSerialization);
     }
 
     @Override
