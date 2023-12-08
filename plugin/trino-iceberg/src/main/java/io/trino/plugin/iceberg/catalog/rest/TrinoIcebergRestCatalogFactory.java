@@ -33,10 +33,12 @@ import java.net.URI;
 import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
+import static org.apache.iceberg.aws.s3.S3FileIOProperties.REMOTE_SIGNING_ENABLED;
 
 public class TrinoIcebergRestCatalogFactory
         implements TrinoCatalogFactory
 {
+    private final SigningFileSystemFactory signingFileSystemFactory;
     private final TrinoFileSystemFactory fileSystemFactory;
     private final CatalogName catalogName;
     private final String trinoVersion;
@@ -51,6 +53,7 @@ public class TrinoIcebergRestCatalogFactory
 
     @Inject
     public TrinoIcebergRestCatalogFactory(
+            SigningFileSystemFactory signingFileSystemFactory,
             TrinoFileSystemFactory fileSystemFactory,
             CatalogName catalogName,
             IcebergRestCatalogConfig restConfig,
@@ -58,6 +61,7 @@ public class TrinoIcebergRestCatalogFactory
             IcebergConfig icebergConfig,
             NodeVersion nodeVersion)
     {
+        this.signingFileSystemFactory = requireNonNull(signingFileSystemFactory, "signingFileSystemFactory is null");
         this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
         this.catalogName = requireNonNull(catalogName, "catalogName is null");
         this.trinoVersion = requireNonNull(nodeVersion, "nodeVersion is null").toString();
@@ -87,6 +91,9 @@ public class TrinoIcebergRestCatalogFactory
                         ConnectorIdentity currentIdentity = (context.wrappedIdentity() != null)
                                 ? ((ConnectorIdentity) context.wrappedIdentity())
                                 : ConnectorIdentity.ofUser("fake");
+                        if ("true".equals(config.get(REMOTE_SIGNING_ENABLED))) {
+                            return new ForwardingFileIo(signingFileSystemFactory.create(currentIdentity, config), config);
+                        }
                         return new ForwardingFileIo(fileSystemFactory.create(currentIdentity));
                     });
             icebergCatalogInstance.initialize(catalogName.toString(), properties.buildOrThrow());

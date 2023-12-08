@@ -58,6 +58,7 @@ import io.trino.plugin.hive.orc.OrcReaderConfig;
 import io.trino.plugin.hive.parquet.ParquetPageSource;
 import io.trino.plugin.hive.parquet.ParquetReaderConfig;
 import io.trino.plugin.iceberg.IcebergParquetColumnIOConverter.FieldContext;
+import io.trino.plugin.iceberg.catalog.rest.SigningFileSystemFactory;
 import io.trino.plugin.iceberg.delete.DeleteFile;
 import io.trino.plugin.iceberg.delete.DeleteFilter;
 import io.trino.plugin.iceberg.delete.EqualityDeleteFilter;
@@ -204,6 +205,7 @@ import static org.apache.iceberg.FileContent.POSITION_DELETES;
 import static org.apache.iceberg.MetadataColumns.DELETE_FILE_PATH;
 import static org.apache.iceberg.MetadataColumns.DELETE_FILE_POS;
 import static org.apache.iceberg.MetadataColumns.ROW_POSITION;
+import static org.apache.iceberg.aws.s3.S3FileIOProperties.REMOTE_SIGNING_ENABLED;
 import static org.joda.time.DateTimeZone.UTC;
 
 public class IcebergPageSourceProvider
@@ -218,6 +220,7 @@ public class IcebergPageSourceProvider
     private static final int MAX_RLE_PAGE_SIZE = DEFAULT_MAX_PAGE_SIZE_IN_BYTES / SIZE_OF_LONG;
 
     private final TrinoFileSystemFactory fileSystemFactory;
+    private final SigningFileSystemFactory signingFileSystemFactory;
     private final FileFormatDataSourceStats fileFormatDataSourceStats;
     private final OrcReaderOptions orcReaderOptions;
     private final ParquetReaderOptions parquetReaderOptions;
@@ -226,12 +229,14 @@ public class IcebergPageSourceProvider
     @Inject
     public IcebergPageSourceProvider(
             TrinoFileSystemFactory fileSystemFactory,
+            SigningFileSystemFactory signingFileSystemFactory,
             FileFormatDataSourceStats fileFormatDataSourceStats,
             OrcReaderConfig orcReaderConfig,
             ParquetReaderConfig parquetReaderConfig,
             TypeManager typeManager)
     {
         this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
+        this.signingFileSystemFactory = requireNonNull(signingFileSystemFactory, "signingFileSystemFactory is null");
         this.fileFormatDataSourceStats = requireNonNull(fileFormatDataSourceStats, "fileFormatDataSourceStats is null");
         this.orcReaderOptions = orcReaderConfig.toOrcReaderOptions();
         this.parquetReaderOptions = parquetReaderConfig.toParquetReaderOptions();
@@ -274,6 +279,7 @@ public class IcebergPageSourceProvider
                 split.getFileRecordCount(),
                 split.getPartitionDataJson(),
                 split.getFileFormat(),
+                split.getFileIoProperties(),
                 tableHandle.getNameMappingJson().map(NameMappingParser::fromJson));
     }
 
@@ -293,6 +299,7 @@ public class IcebergPageSourceProvider
             long fileRecordCount,
             String partitionDataJson,
             IcebergFileFormat fileFormat,
+            Map<String, String> fileIOProperties,
             Optional<NameMapping> nameMapping)
     {
         Set<IcebergColumnHandle> deleteFilterRequiredColumns = requiredColumnsForDeletes(tableSchema, deletes);
@@ -339,7 +346,14 @@ public class IcebergPageSourceProvider
             return new EmptyPageSource();
         }
 
-        TrinoFileSystem fileSystem = fileSystemFactory.create(session);
+        TrinoFileSystem fileSystem;
+        if ("true".equals(fileIOProperties.get(REMOTE_SIGNING_ENABLED))) {
+            fileSystem = signingFileSystemFactory.create(session.getIdentity(), fileIOProperties);
+        }
+        else {
+            fileSystem = fileSystemFactory.create(session);
+        }
+
         TrinoInputFile inputfile = isUseFileSizeFromMetadata(session)
                 ? fileSystem.newInputFile(Location.of(path), fileSize)
                 : fileSystem.newInputFile(Location.of(path));

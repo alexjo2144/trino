@@ -48,6 +48,7 @@ import org.apache.iceberg.TableScan;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.CloseableIterator;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.types.Type;
 
 import java.io.IOException;
@@ -103,6 +104,7 @@ public class IcebergSplitSource
     private final TrinoFileSystemFactory fileSystemFactory;
     private final ConnectorSession session;
     private final IcebergTableHandle tableHandle;
+    private final FileIO fileIO;
     private final TableScan tableScan;
     private final Optional<Long> maxScannedFileSizeInBytes;
     private final Map<Integer, Type.PrimitiveType> fieldIdToType;
@@ -134,6 +136,7 @@ public class IcebergSplitSource
             TrinoFileSystemFactory fileSystemFactory,
             ConnectorSession session,
             IcebergTableHandle tableHandle,
+            FileIO fileIO,
             TableScan tableScan,
             Optional<DataSize> maxScannedFileSize,
             DynamicFilter dynamicFilter,
@@ -146,6 +149,7 @@ public class IcebergSplitSource
         this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
         this.session = requireNonNull(session, "session is null");
         this.tableHandle = requireNonNull(tableHandle, "tableHandle is null");
+        this.fileIO = requireNonNull(fileIO, "fileIO is null");
         this.tableScan = requireNonNull(tableScan, "tableScan is null");
         this.maxScannedFileSizeInBytes = maxScannedFileSize.map(DataSize::toBytes);
         this.fieldIdToType = primitiveFieldTypes(tableScan.schema());
@@ -483,7 +487,8 @@ public class IcebergSplitSource
                 task.deletes().stream()
                         .map(DeleteFile::fromIceberg)
                         .collect(toImmutableList()),
-                SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)));
+                SplitWeight.fromProportion(Math.min(Math.max((double) task.length() / tableScan.targetSplitSize(), minimumAssignedSplitWeight), 1.0)),
+                fileIO.properties());
     }
 
     private static Domain getPathDomain(TupleDomain<IcebergColumnHandle> effectivePredicate)

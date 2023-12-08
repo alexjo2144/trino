@@ -30,6 +30,7 @@ import io.trino.plugin.hive.parquet.ParquetWriterConfig;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog;
+import io.trino.plugin.iceberg.fileio.ForwardingFileIo;
 import io.trino.spi.connector.CatalogHandle;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorSession;
@@ -170,6 +171,7 @@ public class TestIcebergSplitSource
                 fileSystemFactory,
                 SESSION,
                 tableHandle,
+                new ForwardingFileIo(fileSystemFactory.create(SESSION)),
                 nationTable.newScan(),
                 Optional.empty(),
                 new DynamicFilter()

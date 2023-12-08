@@ -13,20 +13,12 @@
  */
 package io.trino.plugin.iceberg.catalog.rest;
 
-import com.google.inject.Binder;
-import com.google.inject.Scopes;
-import io.airlift.configuration.AbstractConfigurationAwareModule;
+import io.trino.filesystem.TrinoFileSystem;
+import io.trino.spi.security.ConnectorIdentity;
 
-import static io.airlift.configuration.ConfigBinder.configBinder;
+import java.util.Map;
 
-public class OAuth2SecurityModule
-        extends AbstractConfigurationAwareModule
+public interface SigningFileSystemFactory
 {
-    @Override
-    protected void setup(Binder binder)
-    {
-        configBinder(binder).bindConfig(OAuth2SecurityConfig.class);
-        binder.bind(SecurityProperties.class).to(OAuth2SecurityProperties.class);
-        binder.bind(SigningFileSystemFactory.class).to(IcebergRestFileSystemFactory.class).in(Scopes.SINGLETON);
-    }
+    TrinoFileSystem create(ConnectorIdentity identity, Map<String, String> config);
 }

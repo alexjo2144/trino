@@ -91,6 +91,7 @@ public class IcebergSplitManager
                 fileSystemFactory,
                 session,
                 table,
+                icebergTable.io(),
                 tableScan,
                 table.getMaxScannedFileSize(),
                 dynamicFilter,
