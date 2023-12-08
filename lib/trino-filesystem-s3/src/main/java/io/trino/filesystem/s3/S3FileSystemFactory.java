@@ -21,6 +21,7 @@ import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.spi.security.ConnectorIdentity;
 import jakarta.annotation.PreDestroy;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
@@ -40,6 +41,11 @@ import static java.lang.Math.toIntExact;
 public final class S3FileSystemFactory
         implements TrinoFileSystemFactory
 {
+    public static final String EXTRA_CREDENTIALS_ACCESS_KEY_PROPERTY = "extra_credentials_aws_access_key";
+    public static final String EXTRA_CREDENTIALS_SECRET_KEY_PROPERTY = "extra_credentials_aws_secret_key";
+    public static final String EXTRA_CREDENTIALS_SESSION_TOKEN_PROPERTY = "extra_credentials_aws_session_token";
+
+    private final S3ClientBuilder clientBuilder;
     private final S3Client client;
     private final S3Context context;
 
@@ -92,8 +98,7 @@ public final class S3FileSystemFactory
                     .build());
         }
 
-        s3.httpClientBuilder(httpClient);
-
+        this.clientBuilder = s3.httpClientBuilder(httpClient);
         this.client = s3.build();
 
         context = new S3Context(
@@ -112,6 +117,14 @@ public final class S3FileSystemFactory
     @Override
     public TrinoFileSystem create(ConnectorIdentity identity)
     {
+        if (identity.getExtraCredentials().containsKey(EXTRA_CREDENTIALS_ACCESS_KEY_PROPERTY)) {
+            clientBuilder.credentialsProvider(StaticCredentialsProvider.create(AwsSessionCredentials.create(
+                    identity.getExtraCredentials().get(EXTRA_CREDENTIALS_ACCESS_KEY_PROPERTY),
+                    identity.getExtraCredentials().get(EXTRA_CREDENTIALS_SECRET_KEY_PROPERTY),
+                    identity.getExtraCredentials().get(EXTRA_CREDENTIALS_SESSION_TOKEN_PROPERTY))));
+            return new S3FileSystem(clientBuilder.build(), context);
+        }
+
         return new S3FileSystem(client, context);
     }
 

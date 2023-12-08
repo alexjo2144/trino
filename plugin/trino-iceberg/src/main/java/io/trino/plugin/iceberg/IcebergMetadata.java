@@ -32,7 +32,6 @@ import io.trino.filesystem.FileEntry;
 import io.trino.filesystem.FileIterator;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.base.classloader.ClassLoaderSafeSystemTable;
 import io.trino.plugin.base.filter.UtcConstraintExtractor;
 import io.trino.plugin.base.projection.ApplyProjectionUtil;
@@ -323,7 +322,7 @@ public class IcebergMetadata
     private final CatalogHandle trinoCatalogHandle;
     private final JsonCodec<CommitTaskData> commitTaskCodec;
     private final TrinoCatalog catalog;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final TableStatisticsWriter tableStatisticsWriter;
 
     private final Map<IcebergTableHandle, TableStatistics> tableStatisticsCache = new ConcurrentHashMap<>();
@@ -335,7 +334,7 @@ public class IcebergMetadata
             CatalogHandle trinoCatalogHandle,
             JsonCodec<CommitTaskData> commitTaskCodec,
             TrinoCatalog catalog,
-            TrinoFileSystemFactory fileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             TableStatisticsWriter tableStatisticsWriter)
     {
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
@@ -944,7 +943,7 @@ public class IcebergMetadata
         }
         transaction = newCreateTableTransaction(catalog, tableMetadata, session, replace);
         Location location = Location.of(transaction.table().location());
-        TrinoFileSystem fileSystem = fileSystemFactory.create(session);
+        TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), transaction.table().io().properties());
         try {
             if (!replace && fileSystem.listFiles(location).hasNext()) {
                 throw new TrinoException(ICEBERG_FILESYSTEM_ERROR, format("" +
@@ -1037,7 +1036,8 @@ public class IcebergMetadata
                 table.location(),
                 getFileFormat(table),
                 table.properties(),
-                retryMode);
+                retryMode,
+                table.io().properties());
     }
 
     private static List<TrinoSortField> getSupportedSortFields(Schema schema, SortOrder sortOrder)
@@ -1151,7 +1151,7 @@ public class IcebergMetadata
 
     private void cleanExtraOutputFiles(ConnectorSession session, Set<String> writtenFiles)
     {
-        TrinoFileSystem fileSystem = fileSystemFactory.create(session);
+        TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), transaction.table().io().properties());
         Set<String> locations = getOutputFilesLocations(writtenFiles);
         Set<String> fileNames = getOutputFilesFileNames(writtenFiles);
         for (String location : locations) {
@@ -1285,7 +1285,8 @@ public class IcebergMetadata
                         tableHandle.getStorageProperties(),
                         maxScannedFileSize,
                         retryMode != NO_RETRIES),
-                tableHandle.getTableLocation()));
+                tableHandle.getTableLocation(),
+                icebergTable.io().properties()));
     }
 
     private Optional<ConnectorTableExecuteHandle> getTableHandleForDropExtendedStats(ConnectorSession session, IcebergTableHandle tableHandle)
@@ -1296,7 +1297,8 @@ public class IcebergMetadata
                 tableHandle.getSchemaTableName(),
                 DROP_EXTENDED_STATS,
                 new IcebergDropExtendedStatsHandle(),
-                icebergTable.location()));
+                icebergTable.location(),
+                icebergTable.io().properties()));
     }
 
     private Optional<ConnectorTableExecuteHandle> getTableHandleForExpireSnapshots(ConnectorSession session, IcebergTableHandle tableHandle, Map<String, Object> executeProperties)
@@ -1308,7 +1310,8 @@ public class IcebergMetadata
                 tableHandle.getSchemaTableName(),
                 EXPIRE_SNAPSHOTS,
                 new IcebergExpireSnapshotsHandle(retentionThreshold),
-                icebergTable.location()));
+                icebergTable.location(),
+                icebergTable.io().properties()));
     }
 
     private Optional<ConnectorTableExecuteHandle> getTableHandleForRemoveOrphanFiles(ConnectorSession session, IcebergTableHandle tableHandle, Map<String, Object> executeProperties)
@@ -1320,7 +1323,8 @@ public class IcebergMetadata
                 tableHandle.getSchemaTableName(),
                 REMOVE_ORPHAN_FILES,
                 new IcebergRemoveOrphanFilesHandle(retentionThreshold),
-                icebergTable.location()));
+                icebergTable.location(),
+                icebergTable.io().properties()));
     }
 
     @Override
@@ -1526,7 +1530,7 @@ public class IcebergMetadata
                 IcebergSessionProperties.EXPIRE_SNAPSHOTS_MIN_RETENTION);
 
         long expireTimestampMillis = session.getStart().toEpochMilli() - retention.toMillis();
-        TrinoFileSystem fileSystem = fileSystemFactory.create(session);
+        TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), transaction.table().io().properties());
         List<Location> pathsToDelete = new ArrayList<>();
         // deleteFunction is not accessed from multiple threads unless .executeDeleteWith() is used
         Consumer<String> deleteFunction = path -> {
@@ -1673,7 +1677,7 @@ public class IcebergMetadata
     {
         try {
             List<Location> filesToDelete = new ArrayList<>();
-            TrinoFileSystem fileSystem = fileSystemFactory.create(session);
+            TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), transaction.table().io().properties());
             FileIterator allFiles = fileSystem.listFiles(Location.of(table.location()).appendPath(subfolder));
             while (allFiles.hasNext()) {
                 FileEntry entry = allFiles.next();
