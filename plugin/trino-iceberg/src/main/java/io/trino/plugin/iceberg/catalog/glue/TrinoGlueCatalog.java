@@ -44,13 +44,13 @@ import io.airlift.log.Logger;
 import io.trino.cache.EvictableCacheBuilder;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.SchemaAlreadyExistsException;
 import io.trino.plugin.hive.TrinoViewUtil;
 import io.trino.plugin.hive.ViewAlreadyExistsException;
 import io.trino.plugin.hive.ViewReaderUtil;
 import io.trino.plugin.hive.metastore.glue.GlueMetastoreStats;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.IcebergMaterializedViewDefinition;
 import io.trino.plugin.iceberg.IcebergMetadata;
 import io.trino.plugin.iceberg.UnknownTableTypeException;
@@ -176,7 +176,7 @@ public class TrinoGlueCatalog
     private final String trinoVersion;
     private final TypeManager typeManager;
     private final boolean cacheTableMetadata;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final Optional<String> defaultSchemaLocation;
     private final AWSGlueAsync glueClient;
     private final GlueMetastoreStats stats;
@@ -200,7 +200,7 @@ public class TrinoGlueCatalog
 
     public TrinoGlueCatalog(
             CatalogName catalogName,
-            TrinoFileSystemFactory fileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             TypeManager typeManager,
             boolean cacheTableMetadata,
             IcebergTableOperationsProvider tableOperationsProvider,
@@ -691,7 +691,7 @@ public class TrinoGlueCatalog
             // So log the exception and continue with deleting the table location
             LOG.warn(e, "Failed to delete table data referenced by metadata");
         }
-        deleteTableDirectory(fileSystemFactory.create(session), schemaTableName, table.location());
+        deleteTableDirectory(fileSystemFactory.create(session.getIdentity(), table.io().properties()), schemaTableName, table.location());
         invalidateTableCache(schemaTableName);
     }
 
@@ -704,7 +704,7 @@ public class TrinoGlueCatalog
             throw new TrinoException(ICEBERG_INVALID_METADATA, format("Table %s is missing [%s] property", schemaTableName, METADATA_LOCATION_PROP));
         }
         String tableLocation = metadataLocation.replaceFirst("/metadata/[^/]*$", "");
-        deleteTableDirectory(fileSystemFactory.create(session), schemaTableName, tableLocation);
+        deleteTableDirectory(fileSystemFactory.create(session.getIdentity(), ImmutableMap.of()), schemaTableName, tableLocation);
         invalidateTableCache(schemaTableName);
     }
 
@@ -852,7 +852,9 @@ public class TrinoGlueCatalog
             try {
                 // Cache the TableMetadata while we have the Table retrieved anyway
                 // Note: this is racy from cache invalidation perspective, but it should not matter here
-                uncheckedCacheGet(tableMetadataCache, schemaTableName, () -> TableMetadataParser.read(new ForwardingFileIo(fileSystemFactory.create(session)), metadataLocation));
+                uncheckedCacheGet(tableMetadataCache, schemaTableName, () -> TableMetadataParser.read(
+                        new ForwardingFileIo(fileSystemFactory.create(session.getIdentity(), ImmutableMap.of())),
+                        metadataLocation));
             }
             catch (RuntimeException e) {
                 LOG.warn(e, "Failed to cache table metadata from table at %s", metadataLocation);
@@ -1416,7 +1418,7 @@ public class TrinoGlueCatalog
         requireNonNull(storageTableName, "storageTableName is null");
         requireNonNull(storageMetadataLocation, "storageMetadataLocation is null");
         return uncheckedCacheGet(tableMetadataCache, storageTableName, () -> {
-            TrinoFileSystem fileSystem = fileSystemFactory.create(session);
+            TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), ImmutableMap.of());
             return TableMetadataParser.read(new ForwardingFileIo(fileSystem), storageMetadataLocation);
         });
     }

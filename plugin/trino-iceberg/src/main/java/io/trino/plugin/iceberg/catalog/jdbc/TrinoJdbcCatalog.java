@@ -20,8 +20,8 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.airlift.log.Logger;
 import io.trino.cache.EvictableCacheBuilder;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.base.CatalogName;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.catalog.AbstractTrinoCatalog;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.spi.TrinoException;
@@ -86,7 +86,7 @@ public class TrinoJdbcCatalog
 
     private final JdbcCatalog jdbcCatalog;
     private final IcebergJdbcClient jdbcClient;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final String defaultWarehouseDir;
 
     private final Cache<SchemaTableName, TableMetadata> tableMetadataCache = EvictableCacheBuilder.newBuilder()
@@ -99,7 +99,7 @@ public class TrinoJdbcCatalog
             IcebergTableOperationsProvider tableOperationsProvider,
             JdbcCatalog jdbcCatalog,
             IcebergJdbcClient jdbcClient,
-            TrinoFileSystemFactory fileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             boolean useUniqueTableLocation,
             String defaultWarehouseDir)
     {
@@ -294,7 +294,7 @@ public class TrinoJdbcCatalog
             // So log the exception and continue with deleting the table location
             LOG.warn(e, "Failed to delete table data referenced by metadata");
         }
-        deleteTableDirectory(fileSystemFactory.create(session), schemaTableName, table.location());
+        deleteTableDirectory(fileSystemFactory.create(session.getIdentity(), table.io().properties()), schemaTableName, table.location());
         invalidateTableCache(schemaTableName);
     }
 
@@ -309,7 +309,7 @@ public class TrinoJdbcCatalog
             throw new TrinoException(ICEBERG_INVALID_METADATA, format("Could not find metadata_location for table %s", schemaTableName));
         }
         String tableLocation = metadataLocation.get().replaceFirst("/metadata/[^/]*$", "");
-        deleteTableDirectory(fileSystemFactory.create(session), schemaTableName, tableLocation);
+        deleteTableDirectory(fileSystemFactory.create(session.getIdentity(), ImmutableMap.of()), schemaTableName, tableLocation);
         invalidateTableCache(schemaTableName);
     }
 

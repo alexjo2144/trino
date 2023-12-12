@@ -22,6 +22,7 @@ import io.trino.filesystem.TrinoOutputFile;
 import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
 import io.trino.filesystem.local.LocalInputFile;
 import io.trino.filesystem.local.LocalOutputFile;
+import io.trino.filesystem.s3.S3FileSystemConfig;
 import io.trino.metadata.TableHandle;
 import io.trino.orc.OrcWriteValidation;
 import io.trino.orc.OrcWriter;
@@ -196,7 +197,7 @@ public class TestIcebergNodeLocalDynamicSplitPruning
         FileFormatDataSourceStats stats = new FileFormatDataSourceStats();
         IcebergPageSourceProvider provider = new IcebergPageSourceProvider(
                 new HdfsFileSystemFactory(HDFS_ENVIRONMENT, HDFS_FILE_SYSTEM_STATS),
-                new IcebergRestFileSystemFactory(),
+                new IcebergRestFileSystemFactory(new S3FileSystemConfig()),
                 stats,
                 ORC_READER_CONFIG,
                 PARQUET_READER_CONFIG,

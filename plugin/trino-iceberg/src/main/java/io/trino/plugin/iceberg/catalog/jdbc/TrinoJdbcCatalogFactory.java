@@ -18,6 +18,7 @@ import com.google.inject.Inject;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.iceberg.IcebergConfig;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.TrinoCatalogFactory;
@@ -41,7 +42,7 @@ public class TrinoJdbcCatalogFactory
     private final CatalogName catalogName;
     private final TypeManager typeManager;
     private final IcebergTableOperationsProvider tableOperationsProvider;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final IcebergJdbcClient jdbcClient;
     private final String jdbcCatalogName;
     private final String defaultWarehouseDir;
@@ -54,7 +55,7 @@ public class TrinoJdbcCatalogFactory
             CatalogName catalogName,
             TypeManager typeManager,
             IcebergTableOperationsProvider tableOperationsProvider,
-            TrinoFileSystemFactory fileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             IcebergJdbcClient jdbcClient,
             IcebergJdbcCatalogConfig jdbcConfig,
             IcebergConfig icebergConfig)
@@ -88,7 +89,7 @@ public class TrinoJdbcCatalogFactory
     public TrinoCatalog create(ConnectorIdentity identity)
     {
         JdbcCatalog jdbcCatalog = new JdbcCatalog(
-                config -> new ForwardingFileIo(fileSystemFactory.create(identity)),
+                config -> new ForwardingFileIo(fileSystemFactory.create(identity, ImmutableMap.of())),
                 config -> clientPool,
                 false);
 

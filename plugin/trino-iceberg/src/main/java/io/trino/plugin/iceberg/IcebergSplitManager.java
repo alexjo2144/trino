@@ -46,14 +46,14 @@ public class IcebergSplitManager
 
     private final IcebergTransactionManager transactionManager;
     private final TypeManager typeManager;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final boolean asyncIcebergSplitProducer;
 
     @Inject
     public IcebergSplitManager(
             IcebergTransactionManager transactionManager,
             TypeManager typeManager,
-            TrinoFileSystemFactory fileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             @AsyncIcebergSplitProducer boolean asyncIcebergSplitProducer)
     {
         this.transactionManager = requireNonNull(transactionManager, "transactionManager is null");
@@ -91,7 +91,7 @@ public class IcebergSplitManager
                 fileSystemFactory,
                 session,
                 table,
-                icebergTable.io(),
+                icebergTable.io().properties(),
                 tableScan,
                 table.getMaxScannedFileSize(),
                 dynamicFilter,

@@ -22,7 +22,6 @@ import io.airlift.log.Logger;
 import io.trino.cache.EvictableCacheBuilder;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.HiveSchemaProperties;
 import io.trino.plugin.hive.TrinoViewHiveMetastore;
@@ -33,6 +32,7 @@ import io.trino.plugin.hive.metastore.MetastoreUtil;
 import io.trino.plugin.hive.metastore.PrincipalPrivileges;
 import io.trino.plugin.hive.metastore.cache.CachingHiveMetastore;
 import io.trino.plugin.hive.util.HiveUtil;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.IcebergTableName;
 import io.trino.plugin.iceberg.UnknownTableTypeException;
 import io.trino.plugin.iceberg.catalog.AbstractTrinoCatalog;
@@ -137,7 +137,7 @@ public class TrinoHiveCatalog
 
     private final CachingHiveMetastore metastore;
     private final TrinoViewHiveMetastore trinoViewHiveMetastore;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final boolean isUsingSystemSecurity;
     private final boolean deleteSchemaLocationsFallback;
     private final boolean hideMaterializedViewStorageTable;
@@ -150,7 +150,7 @@ public class TrinoHiveCatalog
             CatalogName catalogName,
             CachingHiveMetastore metastore,
             TrinoViewHiveMetastore trinoViewHiveMetastore,
-            TrinoFileSystemFactory fileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             TypeManager typeManager,
             IcebergTableOperationsProvider tableOperationsProvider,
             boolean useUniqueTableLocation,
@@ -228,7 +228,7 @@ public class TrinoHiveCatalog
                 case LOCATION_PROPERTY -> {
                     String location = (String) value;
                     try {
-                        fileSystemFactory.create(session).directoryExists(Location.of(location));
+                        fileSystemFactory.create(session.getIdentity(), ImmutableMap.of()).directoryExists(Location.of(location));
                     }
                     catch (IOException | IllegalArgumentException e) {
                         throw new TrinoException(INVALID_SCHEMA_PROPERTY, "Invalid location URI: " + location, e);
@@ -259,7 +259,7 @@ public class TrinoHiveCatalog
         // If we fail to check the schema location, behave according to fallback.
         boolean deleteData = location.map(path -> {
             try {
-                return !fileSystemFactory.create(session).listFiles(Location.of(path)).hasNext();
+                return !fileSystemFactory.create(session.getIdentity(), ImmutableMap.of()).listFiles(Location.of(path)).hasNext();
             }
             catch (IOException | RuntimeException e) {
                 log.warn(e, "Could not check schema directory '%s'", path);
@@ -428,7 +428,7 @@ public class TrinoHiveCatalog
             // So log the exception and continue with deleting the table location
             log.warn(e, "Failed to delete table data referenced by metadata");
         }
-        deleteTableDirectory(fileSystemFactory.create(session), schemaTableName, metastoreTable.getStorage().getLocation());
+        deleteTableDirectory(fileSystemFactory.create(session.getIdentity(), table.io().properties()), schemaTableName, metastoreTable.getStorage().getLocation());
         invalidateTableCache(schemaTableName);
     }
 
@@ -436,7 +436,7 @@ public class TrinoHiveCatalog
     public void dropCorruptedTable(ConnectorSession session, SchemaTableName schemaTableName)
     {
         io.trino.plugin.hive.metastore.Table table = dropTableFromMetastore(schemaTableName);
-        deleteTableDirectory(fileSystemFactory.create(session), schemaTableName, table.getStorage().getLocation());
+        deleteTableDirectory(fileSystemFactory.create(session.getIdentity(), ImmutableMap.of()), schemaTableName, table.getStorage().getLocation());
         invalidateTableCache(schemaTableName);
     }
 
@@ -728,7 +728,7 @@ public class TrinoHiveCatalog
         String storageMetadataLocation = view.getParameters().get(METADATA_LOCATION_PROP);
         checkState(storageMetadataLocation != null, "Storage location missing in definition of materialized view " + viewName);
 
-        TrinoFileSystem fileSystem = fileSystemFactory.create(session);
+        TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), ImmutableMap.of());
         TableMetadata metadata = TableMetadataParser.read(new ForwardingFileIo(fileSystem), storageMetadataLocation);
         String storageLocation = metadata.location();
         try {
@@ -856,7 +856,7 @@ public class TrinoHiveCatalog
         return uncheckedCacheGet(tableMetadataCache, storageTableName, () -> {
             String storageMetadataLocation = materializedView.getParameters().get(METADATA_LOCATION_PROP);
             checkState(storageMetadataLocation != null, "Storage location missing in definition of materialized view " + materializedView.getTableName());
-            TrinoFileSystem fileSystem = fileSystemFactory.create(session);
+            TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), ImmutableMap.of());
             return TableMetadataParser.read(new ForwardingFileIo(fileSystem), storageMetadataLocation);
         });
     }
