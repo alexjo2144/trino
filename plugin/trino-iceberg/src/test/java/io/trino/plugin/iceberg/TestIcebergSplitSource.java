@@ -17,7 +17,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.airlift.units.Duration;
-import io.trino.filesystem.TrinoFileSystemFactory;
+import io.trino.filesystem.s3.S3FileSystemConfig;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.TrinoViewHiveMetastore;
 import io.trino.plugin.hive.metastore.HiveMetastore;
@@ -30,7 +30,7 @@ import io.trino.plugin.hive.parquet.ParquetWriterConfig;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog;
-import io.trino.plugin.iceberg.fileio.ForwardingFileIo;
+import io.trino.plugin.iceberg.catalog.rest.SigningIcebergFileSystemFactory;
 import io.trino.spi.connector.CatalogHandle;
 import io.trino.spi.connector.ColumnHandle;
 import io.trino.spi.connector.ConnectorSession;
@@ -95,7 +95,7 @@ public class TestIcebergSplitSource
             .build();
 
     private File metastoreDir;
-    private TrinoFileSystemFactory fileSystemFactory;
+    private IcebergFileSystemFactory fileSystemFactory;
     private TrinoCatalog catalog;
 
     @Override
@@ -114,7 +114,7 @@ public class TestIcebergSplitSource
                 .getInstance(HiveMetastoreFactory.class)
                 .createMetastore(Optional.empty());
 
-        this.fileSystemFactory = getFileSystemFactory(queryRunner);
+        this.fileSystemFactory = new SigningIcebergFileSystemFactory(getFileSystemFactory(queryRunner), new S3FileSystemConfig());
         CachingHiveMetastore cachingHiveMetastore = createPerTransactionCache(metastore, 1000);
         this.catalog = new TrinoHiveCatalog(
                 new CatalogName("hive"),
@@ -171,7 +171,7 @@ public class TestIcebergSplitSource
                 fileSystemFactory,
                 SESSION,
                 tableHandle,
-                new ForwardingFileIo(fileSystemFactory.create(SESSION)),
+                ImmutableMap.of(),
                 nationTable.newScan(),
                 Optional.empty(),
                 new DynamicFilter()

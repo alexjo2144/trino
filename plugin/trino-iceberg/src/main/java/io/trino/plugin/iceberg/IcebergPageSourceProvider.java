@@ -26,7 +26,6 @@ import io.airlift.slice.Slice;
 import io.trino.annotation.NotThreadSafe;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.TrinoInputFile;
 import io.trino.memory.context.AggregatedMemoryContext;
 import io.trino.orc.OrcColumn;
@@ -58,7 +57,6 @@ import io.trino.plugin.hive.orc.OrcReaderConfig;
 import io.trino.plugin.hive.parquet.ParquetPageSource;
 import io.trino.plugin.hive.parquet.ParquetReaderConfig;
 import io.trino.plugin.iceberg.IcebergParquetColumnIOConverter.FieldContext;
-import io.trino.plugin.iceberg.catalog.rest.SigningFileSystemFactory;
 import io.trino.plugin.iceberg.delete.DeleteFile;
 import io.trino.plugin.iceberg.delete.DeleteFilter;
 import io.trino.plugin.iceberg.delete.EqualityDeleteFilter;
@@ -205,7 +203,6 @@ import static org.apache.iceberg.FileContent.POSITION_DELETES;
 import static org.apache.iceberg.MetadataColumns.DELETE_FILE_PATH;
 import static org.apache.iceberg.MetadataColumns.DELETE_FILE_POS;
 import static org.apache.iceberg.MetadataColumns.ROW_POSITION;
-import static org.apache.iceberg.aws.s3.S3FileIOProperties.REMOTE_SIGNING_ENABLED;
 import static org.joda.time.DateTimeZone.UTC;
 
 public class IcebergPageSourceProvider
@@ -219,8 +216,7 @@ public class IcebergPageSourceProvider
     // TODO (https://github.com/trinodb/trino/issues/16824) allow connector to return pages of arbitrary row count and handle this gracefully in engine
     private static final int MAX_RLE_PAGE_SIZE = DEFAULT_MAX_PAGE_SIZE_IN_BYTES / SIZE_OF_LONG;
 
-    private final TrinoFileSystemFactory fileSystemFactory;
-    private final SigningFileSystemFactory signingFileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final FileFormatDataSourceStats fileFormatDataSourceStats;
     private final OrcReaderOptions orcReaderOptions;
     private final ParquetReaderOptions parquetReaderOptions;
@@ -228,15 +224,13 @@ public class IcebergPageSourceProvider
 
     @Inject
     public IcebergPageSourceProvider(
-            TrinoFileSystemFactory fileSystemFactory,
-            SigningFileSystemFactory signingFileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             FileFormatDataSourceStats fileFormatDataSourceStats,
             OrcReaderConfig orcReaderConfig,
             ParquetReaderConfig parquetReaderConfig,
             TypeManager typeManager)
     {
         this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
-        this.signingFileSystemFactory = requireNonNull(signingFileSystemFactory, "signingFileSystemFactory is null");
         this.fileFormatDataSourceStats = requireNonNull(fileFormatDataSourceStats, "fileFormatDataSourceStats is null");
         this.orcReaderOptions = orcReaderConfig.toOrcReaderOptions();
         this.parquetReaderOptions = parquetReaderConfig.toParquetReaderOptions();
@@ -346,14 +340,7 @@ public class IcebergPageSourceProvider
             return new EmptyPageSource();
         }
 
-        TrinoFileSystem fileSystem;
-        if ("true".equals(fileIOProperties.get(REMOTE_SIGNING_ENABLED))) {
-            fileSystem = signingFileSystemFactory.create(session.getIdentity(), fileIOProperties);
-        }
-        else {
-            fileSystem = fileSystemFactory.create(session);
-        }
-
+        TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), fileIOProperties);
         TrinoInputFile inputfile = isUseFileSizeFromMetadata(session)
                 ? fileSystem.newInputFile(Location.of(path), fileSize)
                 : fileSystem.newInputFile(Location.of(path));
@@ -403,6 +390,7 @@ public class IcebergPageSourceProvider
         Supplier<Optional<RowPredicate>> deletePredicate = Suppliers.memoize(() -> {
             List<DeleteFilter> deleteFilters = readDeletes(
                     session,
+                    fileSystem,
                     tableSchema,
                     readColumns,
                     path,
@@ -441,6 +429,7 @@ public class IcebergPageSourceProvider
 
     private List<DeleteFilter> readDeletes(
             ConnectorSession session,
+            TrinoFileSystem fileSystem,
             Schema schema,
             List<IcebergColumnHandle> readColumns,
             String dataFilePath,
@@ -482,7 +471,7 @@ public class IcebergPageSourceProvider
                     }
                 }
 
-                try (ConnectorPageSource pageSource = openDeletes(session, delete, deleteColumns, deleteDomain)) {
+                try (ConnectorPageSource pageSource = openDeletes(session, fileSystem, delete, deleteColumns, deleteDomain)) {
                     readPositionDeletes(pageSource, targetPath, deletedRows);
                 }
                 catch (IOException e) {
@@ -499,7 +488,7 @@ public class IcebergPageSourceProvider
 
                 EqualityDeleteSet equalityDeleteSet = deletesSetByFieldIds.computeIfAbsent(fieldIds, key -> new EqualityDeleteSet(deleteSchema, schemaFromHandles(readColumns)));
 
-                try (ConnectorPageSource pageSource = openDeletes(session, delete, columns, TupleDomain.all())) {
+                try (ConnectorPageSource pageSource = openDeletes(session, fileSystem, delete, columns, TupleDomain.all())) {
                     readEqualityDeletes(pageSource, columns, equalityDeleteSet::add);
                 }
                 catch (IOException e) {
@@ -524,11 +513,11 @@ public class IcebergPageSourceProvider
 
     private ConnectorPageSource openDeletes(
             ConnectorSession session,
+            TrinoFileSystem fileSystem,
             DeleteFile delete,
             List<IcebergColumnHandle> columns,
             TupleDomain<IcebergColumnHandle> tupleDomain)
     {
-        TrinoFileSystem fileSystem = fileSystemFactory.create(session);
         return createDataPageSource(
                 session,
                 fileSystem.newInputFile(Location.of(delete.path()), delete.fileSizeInBytes()),

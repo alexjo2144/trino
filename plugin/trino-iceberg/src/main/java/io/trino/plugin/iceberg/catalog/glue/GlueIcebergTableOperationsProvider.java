@@ -14,9 +14,10 @@
 package io.trino.plugin.iceberg.catalog.glue;
 
 import com.amazonaws.services.glue.AWSGlueAsync;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.hive.metastore.glue.GlueMetastoreStats;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperations;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
@@ -33,7 +34,7 @@ public class GlueIcebergTableOperationsProvider
 {
     private final TypeManager typeManager;
     private final boolean cacheTableMetadata;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final AWSGlueAsync glueClient;
     private final GlueMetastoreStats stats;
 
@@ -41,7 +42,7 @@ public class GlueIcebergTableOperationsProvider
     public GlueIcebergTableOperationsProvider(
             TypeManager typeManager,
             IcebergGlueCatalogConfig catalogConfig,
-            TrinoFileSystemFactory fileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             GlueMetastoreStats stats,
             AWSGlueAsync glueClient)
     {
@@ -69,7 +70,7 @@ public class GlueIcebergTableOperationsProvider
                 // Share Glue Table cache between Catalog and TableOperations so that, when doing metadata queries (e.g. information_schema.columns)
                 // the GetTableRequest is issued once per table.
                 ((TrinoGlueCatalog) catalog)::getTable,
-                new ForwardingFileIo(fileSystemFactory.create(session)),
+                new ForwardingFileIo(fileSystemFactory.create(session.getIdentity(), ImmutableMap.of())),
                 session,
                 database,
                 table,

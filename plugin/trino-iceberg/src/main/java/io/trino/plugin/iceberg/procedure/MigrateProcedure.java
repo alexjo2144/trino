@@ -23,7 +23,6 @@ import io.trino.filesystem.FileEntry;
 import io.trino.filesystem.FileIterator;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.TrinoInputFile;
 import io.trino.parquet.ParquetDataSource;
 import io.trino.parquet.ParquetReaderOptions;
@@ -40,6 +39,7 @@ import io.trino.plugin.hive.metastore.Storage;
 import io.trino.plugin.hive.parquet.TrinoParquetDataSource;
 import io.trino.plugin.iceberg.IcebergConfig;
 import io.trino.plugin.iceberg.IcebergFileFormat;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.IcebergSecurityConfig;
 import io.trino.plugin.iceberg.PartitionData;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
@@ -131,7 +131,7 @@ public class MigrateProcedure
 
     private final TrinoCatalogFactory catalogFactory;
     private final HiveMetastoreFactory metastoreFactory;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final TypeManager typeManager;
     private final int formatVersion;
     private final boolean isUsingSystemSecurity;
@@ -159,7 +159,7 @@ public class MigrateProcedure
     public MigrateProcedure(
             TrinoCatalogFactory catalogFactory,
             @RawHiveMetastoreFactory HiveMetastoreFactory metastoreFactory,
-            TrinoFileSystemFactory fileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             TypeManager typeManager,
             IcebergConfig icebergConfig,
             IcebergSecurityConfig securityConfig)
@@ -348,7 +348,7 @@ public class MigrateProcedure
             throws IOException
     {
         // TODO: Introduce parallelism
-        TrinoFileSystem fileSystem = fileSystemFactory.create(session);
+        TrinoFileSystem fileSystem = fileSystemFactory.create(session.getIdentity(), ImmutableMap.of());
         FileIterator files = fileSystem.listFiles(Location.of(location));
         ImmutableList.Builder<DataFile> dataFilesBuilder = ImmutableList.builder();
         while (files.hasNext()) {

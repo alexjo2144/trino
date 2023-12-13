@@ -16,14 +16,17 @@ package io.trino.plugin.iceberg.catalog.file;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.local.LocalFileSystemFactory;
+import io.trino.filesystem.s3.S3FileSystemConfig;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.TrinoViewHiveMetastore;
 import io.trino.plugin.hive.metastore.HiveMetastore;
 import io.trino.plugin.hive.metastore.cache.CachingHiveMetastore;
 import io.trino.plugin.iceberg.IcebergConfig;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.catalog.BaseTrinoCatalogTest;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog;
+import io.trino.plugin.iceberg.catalog.rest.SigningIcebergFileSystemFactory;
 import io.trino.spi.type.TestingTypeManager;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -48,7 +51,7 @@ public class TestTrinoHiveCatalogWithFileMetastore
         extends BaseTrinoCatalogTest
 {
     private Path tempDir;
-    private TrinoFileSystemFactory fileSystemFactory;
+    private IcebergFileSystemFactory fileSystemFactory;
     private HiveMetastore metastore;
 
     @BeforeAll
@@ -58,8 +61,9 @@ public class TestTrinoHiveCatalogWithFileMetastore
         tempDir = Files.createTempDirectory("test_trino_hive_catalog");
         File metastoreDir = tempDir.resolve("iceberg_data").toFile();
         metastoreDir.mkdirs();
-        fileSystemFactory = new LocalFileSystemFactory(metastoreDir.toPath());
-        metastore = createTestingFileHiveMetastore(fileSystemFactory, Location.of("local:///"));
+        TrinoFileSystemFactory localFileSystem = new LocalFileSystemFactory(metastoreDir.toPath());
+        fileSystemFactory = new SigningIcebergFileSystemFactory(localFileSystem, new S3FileSystemConfig());
+        metastore = createTestingFileHiveMetastore(localFileSystem, Location.of("local:///"));
     }
 
     @AfterAll

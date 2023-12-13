@@ -14,14 +14,15 @@
 package io.trino.plugin.iceberg.procedure;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 import io.trino.filesystem.FileEntry;
 import io.trino.filesystem.FileIterator;
 import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoFileSystem;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.iceberg.IcebergConfig;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.TrinoCatalogFactory;
 import io.trino.plugin.iceberg.fileio.ForwardingFileIo;
@@ -78,11 +79,11 @@ public class RegisterTableProcedure
     }
 
     private final TrinoCatalogFactory catalogFactory;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final boolean registerTableProcedureEnabled;
 
     @Inject
-    public RegisterTableProcedure(TrinoCatalogFactory catalogFactory, TrinoFileSystemFactory fileSystemFactory, IcebergConfig icebergConfig)
+    public RegisterTableProcedure(TrinoCatalogFactory catalogFactory, IcebergFileSystemFactory fileSystemFactory, IcebergConfig icebergConfig)
     {
         this.catalogFactory = requireNonNull(catalogFactory, "catalogFactory is null");
         this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
@@ -141,7 +142,7 @@ public class RegisterTableProcedure
             throw new TrinoException(SCHEMA_NOT_FOUND, format("Schema '%s' does not exist", schemaTableName.getSchemaName()));
         }
 
-        TrinoFileSystem fileSystem = fileSystemFactory.create(clientSession);
+        TrinoFileSystem fileSystem = fileSystemFactory.create(clientSession.getIdentity(), ImmutableMap.of());
         String metadataLocation = getMetadataLocation(fileSystem, tableLocation, metadataFileName);
         validateMetadataLocation(fileSystem, Location.of(metadataLocation));
         TableMetadata tableMetadata;

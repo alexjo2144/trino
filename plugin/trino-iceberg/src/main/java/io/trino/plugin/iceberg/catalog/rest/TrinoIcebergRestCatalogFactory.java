@@ -16,10 +16,10 @@ package io.trino.plugin.iceberg.catalog.rest;
 import com.google.common.collect.ImmutableMap;
 import com.google.errorprone.annotations.concurrent.GuardedBy;
 import com.google.inject.Inject;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.NodeVersion;
 import io.trino.plugin.iceberg.IcebergConfig;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.TrinoCatalogFactory;
 import io.trino.plugin.iceberg.catalog.rest.IcebergRestCatalogConfig.SessionType;
@@ -33,13 +33,11 @@ import java.net.URI;
 import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
-import static org.apache.iceberg.aws.s3.S3FileIOProperties.REMOTE_SIGNING_ENABLED;
 
 public class TrinoIcebergRestCatalogFactory
         implements TrinoCatalogFactory
 {
-    private final SigningFileSystemFactory signingFileSystemFactory;
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final CatalogName catalogName;
     private final String trinoVersion;
     private final URI serverUri;
@@ -53,15 +51,13 @@ public class TrinoIcebergRestCatalogFactory
 
     @Inject
     public TrinoIcebergRestCatalogFactory(
-            SigningFileSystemFactory signingFileSystemFactory,
-            TrinoFileSystemFactory fileSystemFactory,
+            IcebergFileSystemFactory fileSystemFactory,
             CatalogName catalogName,
             IcebergRestCatalogConfig restConfig,
             SecurityProperties securityProperties,
             IcebergConfig icebergConfig,
             NodeVersion nodeVersion)
     {
-        this.signingFileSystemFactory = requireNonNull(signingFileSystemFactory, "signingFileSystemFactory is null");
         this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
         this.catalogName = requireNonNull(catalogName, "catalogName is null");
         this.trinoVersion = requireNonNull(nodeVersion, "nodeVersion is null").toString();
@@ -91,10 +87,7 @@ public class TrinoIcebergRestCatalogFactory
                         ConnectorIdentity currentIdentity = (context.wrappedIdentity() != null)
                                 ? ((ConnectorIdentity) context.wrappedIdentity())
                                 : ConnectorIdentity.ofUser("fake");
-                        if ("true".equals(config.get(REMOTE_SIGNING_ENABLED))) {
-                            return new ForwardingFileIo(signingFileSystemFactory.create(currentIdentity, config), config);
-                        }
-                        return new ForwardingFileIo(fileSystemFactory.create(currentIdentity));
+                        return new ForwardingFileIo(fileSystemFactory.create(currentIdentity, config), config);
                     });
             icebergCatalogInstance.initialize(catalogName.toString(), properties.buildOrThrow());
 

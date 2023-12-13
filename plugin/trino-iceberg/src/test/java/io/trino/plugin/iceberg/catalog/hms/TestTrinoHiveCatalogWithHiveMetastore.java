@@ -15,8 +15,8 @@ package io.trino.plugin.iceberg.catalog.hms;
 
 import com.google.common.collect.ImmutableSet;
 import io.airlift.units.Duration;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
+import io.trino.filesystem.s3.S3FileSystemConfig;
 import io.trino.hdfs.DynamicHdfsConfiguration;
 import io.trino.hdfs.HdfsConfig;
 import io.trino.hdfs.HdfsConfigurationInitializer;
@@ -34,9 +34,11 @@ import io.trino.plugin.hive.metastore.thrift.ThriftMetastore;
 import io.trino.plugin.hive.metastore.thrift.ThriftMetastoreConfig;
 import io.trino.plugin.hive.metastore.thrift.ThriftMetastoreFactory;
 import io.trino.plugin.iceberg.IcebergConfig;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.IcebergSchemaProperties;
 import io.trino.plugin.iceberg.catalog.BaseTrinoCatalogTest;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
+import io.trino.plugin.iceberg.catalog.rest.SigningIcebergFileSystemFactory;
 import io.trino.spi.security.ConnectorIdentity;
 import io.trino.spi.type.TestingTypeManager;
 import org.junit.jupiter.api.AfterAll;
@@ -89,7 +91,7 @@ public class TestTrinoHiveCatalogWithHiveMetastore
     @Override
     protected TrinoCatalog createTrinoCatalog(boolean useUniqueTableLocations)
     {
-        TrinoFileSystemFactory fileSystemFactory = new HdfsFileSystemFactory(new HdfsEnvironment(
+        IcebergFileSystemFactory fileSystemFactory = new SigningIcebergFileSystemFactory(new HdfsFileSystemFactory(new HdfsEnvironment(
                 new DynamicHdfsConfiguration(
                         new HdfsConfigurationInitializer(
                                 new HdfsConfig(),
@@ -102,7 +104,8 @@ public class TestTrinoHiveCatalogWithHiveMetastore
                         ImmutableSet.of()),
                 new HdfsConfig(),
                 new NoHdfsAuthentication()),
-                new TrinoHdfsFileSystemStats());
+                new TrinoHdfsFileSystemStats()),
+                new S3FileSystemConfig());
         ThriftMetastore thriftMetastore = testingThriftHiveMetastoreBuilder()
                 .thriftMetastoreConfig(new ThriftMetastoreConfig()
                         // Read timed out sometimes happens with the default timeout

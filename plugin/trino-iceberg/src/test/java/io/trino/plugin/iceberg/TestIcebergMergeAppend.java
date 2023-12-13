@@ -13,7 +13,7 @@
  */
 package io.trino.plugin.iceberg;
 
-import io.trino.filesystem.TrinoFileSystemFactory;
+import io.trino.filesystem.s3.S3FileSystemConfig;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.TrinoViewHiveMetastore;
 import io.trino.plugin.hive.metastore.HiveMetastore;
@@ -23,6 +23,7 @@ import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog;
+import io.trino.plugin.iceberg.catalog.rest.SigningIcebergFileSystemFactory;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.type.TestingTypeManager;
 import io.trino.testing.AbstractTestQueryFramework;
@@ -55,7 +56,8 @@ public class TestIcebergMergeAppend
                 .getInstance(HiveMetastoreFactory.class)
                 .createMetastore(Optional.empty());
         CachingHiveMetastore cachingHiveMetastore = createPerTransactionCache(metastore, 1000);
-        TrinoFileSystemFactory fileSystemFactory = getFileSystemFactory(queryRunner);
+        // TODO: This can be a no-op signing factory
+        IcebergFileSystemFactory fileSystemFactory = new SigningIcebergFileSystemFactory(getFileSystemFactory(queryRunner), new S3FileSystemConfig());
         tableOperationsProvider = new FileMetastoreTableOperationsProvider(fileSystemFactory);
         trinoCatalog = new TrinoHiveCatalog(
                 new CatalogName("catalog"),

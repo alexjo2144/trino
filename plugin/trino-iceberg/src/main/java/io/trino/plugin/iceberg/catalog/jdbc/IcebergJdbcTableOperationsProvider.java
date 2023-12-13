@@ -13,8 +13,9 @@
  */
 package io.trino.plugin.iceberg.catalog.jdbc;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import io.trino.filesystem.TrinoFileSystemFactory;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperations;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
@@ -28,11 +29,11 @@ import static java.util.Objects.requireNonNull;
 public class IcebergJdbcTableOperationsProvider
         implements IcebergTableOperationsProvider
 {
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final IcebergJdbcClient jdbcClient;
 
     @Inject
-    public IcebergJdbcTableOperationsProvider(IcebergJdbcClient jdbcClient, TrinoFileSystemFactory fileSystemFactory)
+    public IcebergJdbcTableOperationsProvider(IcebergJdbcClient jdbcClient, IcebergFileSystemFactory fileSystemFactory)
     {
         this.jdbcClient = requireNonNull(jdbcClient, "jdbcClient is null");
         this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
@@ -48,7 +49,7 @@ public class IcebergJdbcTableOperationsProvider
             Optional<String> location)
     {
         return new IcebergJdbcTableOperations(
-                new ForwardingFileIo(fileSystemFactory.create(session)),
+                new ForwardingFileIo(fileSystemFactory.create(session.getIdentity(), ImmutableMap.of())),
                 jdbcClient,
                 session,
                 database,

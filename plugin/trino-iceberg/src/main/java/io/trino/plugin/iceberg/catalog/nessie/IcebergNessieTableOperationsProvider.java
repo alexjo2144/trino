@@ -13,8 +13,9 @@
  */
 package io.trino.plugin.iceberg.catalog.nessie;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
-import io.trino.filesystem.TrinoFileSystemFactory;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperations;
 import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
@@ -29,11 +30,11 @@ import static java.util.Objects.requireNonNull;
 public class IcebergNessieTableOperationsProvider
         implements IcebergTableOperationsProvider
 {
-    private final TrinoFileSystemFactory fileSystemFactory;
+    private final IcebergFileSystemFactory fileSystemFactory;
     private final NessieIcebergClient nessieClient;
 
     @Inject
-    public IcebergNessieTableOperationsProvider(TrinoFileSystemFactory fileSystemFactory, NessieIcebergClient nessieClient)
+    public IcebergNessieTableOperationsProvider(IcebergFileSystemFactory fileSystemFactory, NessieIcebergClient nessieClient)
     {
         this.fileSystemFactory = requireNonNull(fileSystemFactory, "fileSystemFactory is null");
         this.nessieClient = requireNonNull(nessieClient, "nessieClient is null");
@@ -50,7 +51,7 @@ public class IcebergNessieTableOperationsProvider
     {
         return new IcebergNessieTableOperations(
                 nessieClient,
-                new ForwardingFileIo(fileSystemFactory.create(session)),
+                new ForwardingFileIo(fileSystemFactory.create(session.getIdentity(), ImmutableMap.of())),
                 session,
                 database,
                 table,

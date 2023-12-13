@@ -20,16 +20,18 @@ import com.amazonaws.services.glue.model.DatabaseInput;
 import com.amazonaws.services.glue.model.DeleteDatabaseRequest;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.log.Logger;
-import io.trino.filesystem.TrinoFileSystemFactory;
+import io.trino.filesystem.s3.S3FileSystemConfig;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.NodeVersion;
 import io.trino.plugin.hive.metastore.glue.GlueMetastoreStats;
 import io.trino.plugin.iceberg.CommitTaskData;
 import io.trino.plugin.iceberg.IcebergConfig;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.IcebergMetadata;
 import io.trino.plugin.iceberg.TableStatisticsWriter;
 import io.trino.plugin.iceberg.catalog.BaseTrinoCatalogTest;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
+import io.trino.plugin.iceberg.catalog.rest.SigningIcebergFileSystemFactory;
 import io.trino.spi.connector.CatalogHandle;
 import io.trino.spi.connector.ConnectorMetadata;
 import io.trino.spi.connector.SchemaTableName;
@@ -61,7 +63,7 @@ public class TestTrinoGlueCatalog
     @Override
     protected TrinoCatalog createTrinoCatalog(boolean useUniqueTableLocations)
     {
-        TrinoFileSystemFactory fileSystemFactory = HDFS_FILE_SYSTEM_FACTORY;
+        IcebergFileSystemFactory fileSystemFactory = new SigningIcebergFileSystemFactory(HDFS_FILE_SYSTEM_FACTORY, new S3FileSystemConfig());
         AWSGlueAsync glueClient = AWSGlueAsyncClientBuilder.defaultClient();
         IcebergGlueCatalogConfig catalogConfig = new IcebergGlueCatalogConfig();
         return new TrinoGlueCatalog(
@@ -116,7 +118,7 @@ public class TestTrinoGlueCatalog
                     CatalogHandle.fromId("iceberg:NORMAL:v12345"),
                     jsonCodec(CommitTaskData.class),
                     catalog,
-                    connectorIdentity -> {
+                    (connectorIdentity, fileIOProperties) -> {
                         throw new UnsupportedOperationException();
                     },
                     new TableStatisticsWriter(new NodeVersion("test-version")));
@@ -141,7 +143,7 @@ public class TestTrinoGlueCatalog
         Path tmpDirectory = Files.createTempDirectory("test_glue_catalog_default_location_");
         tmpDirectory.toFile().deleteOnExit();
 
-        TrinoFileSystemFactory fileSystemFactory = HDFS_FILE_SYSTEM_FACTORY;
+        IcebergFileSystemFactory fileSystemFactory = new SigningIcebergFileSystemFactory(HDFS_FILE_SYSTEM_FACTORY, new S3FileSystemConfig());
         AWSGlueAsync glueClient = AWSGlueAsyncClientBuilder.defaultClient();
         IcebergGlueCatalogConfig catalogConfig = new IcebergGlueCatalogConfig();
         TrinoCatalog catalogWithDefaultLocation = new TrinoGlueCatalog(

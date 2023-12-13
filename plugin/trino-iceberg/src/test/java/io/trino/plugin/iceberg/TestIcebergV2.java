@@ -16,7 +16,7 @@ package io.trino.plugin.iceberg;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.trino.Session;
-import io.trino.filesystem.TrinoFileSystemFactory;
+import io.trino.filesystem.s3.S3FileSystemConfig;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.base.util.Closables;
 import io.trino.plugin.blackhole.BlackHolePlugin;
@@ -28,6 +28,7 @@ import io.trino.plugin.iceberg.catalog.IcebergTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
 import io.trino.plugin.iceberg.catalog.file.FileMetastoreTableOperationsProvider;
 import io.trino.plugin.iceberg.catalog.hms.TrinoHiveCatalog;
+import io.trino.plugin.iceberg.catalog.rest.SigningIcebergFileSystemFactory;
 import io.trino.plugin.iceberg.fileio.ForwardingFileIo;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.predicate.Domain;
@@ -106,7 +107,7 @@ public class TestIcebergV2
         extends AbstractTestQueryFramework
 {
     private HiveMetastore metastore;
-    private TrinoFileSystemFactory fileSystemFactory;
+    private IcebergFileSystemFactory fileSystemFactory;
 
     @Override
     protected QueryRunner createQueryRunner()
@@ -135,7 +136,7 @@ public class TestIcebergV2
     @BeforeAll
     public void initFileSystemFactory()
     {
-        fileSystemFactory = getFileSystemFactory(getDistributedQueryRunner());
+        fileSystemFactory = new SigningIcebergFileSystemFactory(getFileSystemFactory(getDistributedQueryRunner()), new S3FileSystemConfig());
     }
 
     @Test
@@ -179,7 +180,7 @@ public class TestIcebergV2
 
         String dataFilePath = (String) computeActual("SELECT file_path FROM \"" + tableName + "$files\" LIMIT 1").getOnlyValue();
 
-        FileIO fileIo = new ForwardingFileIo(fileSystemFactory.create(SESSION));
+        FileIO fileIo = new ForwardingFileIo(fileSystemFactory.create(SESSION.getIdentity(), ImmutableMap.of()));
 
         PositionDeleteWriter<Record> writer = Parquet.writeDeletes(fileIo.newOutputFile("local:///delete_file_" + UUID.randomUUID()))
                 .createWriterFunc(GenericParquetWriter::buildWriter)
@@ -967,7 +968,7 @@ public class TestIcebergV2
             List<Integer> equalityDeleteFieldIds)
             throws Exception
     {
-        FileIO fileIo = new ForwardingFileIo(fileSystemFactory.create(SESSION));
+        FileIO fileIo = new ForwardingFileIo(fileSystemFactory.create(SESSION.getIdentity(), ImmutableMap.of()));
 
         Parquet.DeleteWriteBuilder writerBuilder = Parquet.writeDeletes(fileIo.newOutputFile("local:///delete_file_" + UUID.randomUUID()))
                 .forTable(icebergTable)

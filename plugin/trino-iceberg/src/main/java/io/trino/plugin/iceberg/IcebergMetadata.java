@@ -1036,7 +1036,8 @@ public class IcebergMetadata
                 table.location(),
                 getFileFormat(table),
                 table.properties(),
-                retryMode);
+                retryMode,
+                table.io().properties());
     }
 
     private static List<TrinoSortField> getSupportedSortFields(Schema schema, SortOrder sortOrder)
@@ -1284,7 +1285,8 @@ public class IcebergMetadata
                         tableHandle.getStorageProperties(),
                         maxScannedFileSize,
                         retryMode != NO_RETRIES),
-                tableHandle.getTableLocation()));
+                tableHandle.getTableLocation(),
+                icebergTable.io().properties()));
     }
 
     private Optional<ConnectorTableExecuteHandle> getTableHandleForDropExtendedStats(ConnectorSession session, IcebergTableHandle tableHandle)
@@ -1295,7 +1297,8 @@ public class IcebergMetadata
                 tableHandle.getSchemaTableName(),
                 DROP_EXTENDED_STATS,
                 new IcebergDropExtendedStatsHandle(),
-                icebergTable.location()));
+                icebergTable.location(),
+                icebergTable.io().properties()));
     }
 
     private Optional<ConnectorTableExecuteHandle> getTableHandleForExpireSnapshots(ConnectorSession session, IcebergTableHandle tableHandle, Map<String, Object> executeProperties)
@@ -1307,7 +1310,8 @@ public class IcebergMetadata
                 tableHandle.getSchemaTableName(),
                 EXPIRE_SNAPSHOTS,
                 new IcebergExpireSnapshotsHandle(retentionThreshold),
-                icebergTable.location()));
+                icebergTable.location(),
+                icebergTable.io().properties()));
     }
 
     private Optional<ConnectorTableExecuteHandle> getTableHandleForRemoveOrphanFiles(ConnectorSession session, IcebergTableHandle tableHandle, Map<String, Object> executeProperties)
@@ -1319,7 +1323,8 @@ public class IcebergMetadata
                 tableHandle.getSchemaTableName(),
                 REMOVE_ORPHAN_FILES,
                 new IcebergRemoveOrphanFilesHandle(retentionThreshold),
-                icebergTable.location()));
+                icebergTable.location(),
+                icebergTable.io().properties()));
     }
 
     @Override

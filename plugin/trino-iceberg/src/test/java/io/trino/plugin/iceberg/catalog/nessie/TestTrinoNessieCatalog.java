@@ -14,15 +14,17 @@
 package io.trino.plugin.iceberg.catalog.nessie;
 
 import com.google.common.collect.ImmutableMap;
-import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.filesystem.hdfs.HdfsFileSystemFactory;
+import io.trino.filesystem.s3.S3FileSystemConfig;
 import io.trino.plugin.base.CatalogName;
 import io.trino.plugin.hive.NodeVersion;
 import io.trino.plugin.iceberg.CommitTaskData;
+import io.trino.plugin.iceberg.IcebergFileSystemFactory;
 import io.trino.plugin.iceberg.IcebergMetadata;
 import io.trino.plugin.iceberg.TableStatisticsWriter;
 import io.trino.plugin.iceberg.catalog.BaseTrinoCatalogTest;
 import io.trino.plugin.iceberg.catalog.TrinoCatalog;
+import io.trino.plugin.iceberg.catalog.rest.SigningIcebergFileSystemFactory;
 import io.trino.plugin.iceberg.containers.NessieContainer;
 import io.trino.spi.connector.CatalogHandle;
 import io.trino.spi.connector.ConnectorMetadata;
@@ -91,7 +93,7 @@ public class TestTrinoNessieCatalog
         catch (IOException e) {
             fail(e.getMessage());
         }
-        TrinoFileSystemFactory fileSystemFactory = new HdfsFileSystemFactory(HDFS_ENVIRONMENT, HDFS_FILE_SYSTEM_STATS);
+        IcebergFileSystemFactory fileSystemFactory = new SigningIcebergFileSystemFactory(new HdfsFileSystemFactory(HDFS_ENVIRONMENT, HDFS_FILE_SYSTEM_STATS), new S3FileSystemConfig());
         IcebergNessieCatalogConfig icebergNessieCatalogConfig = new IcebergNessieCatalogConfig()
                 .setServerUri(URI.create(nessieContainer.getRestApiUri()));
         NessieApiV1 nessieApi = HttpClientBuilder.builder()
@@ -114,7 +116,7 @@ public class TestTrinoNessieCatalog
     {
         Path tmpDirectory = createTempDirectory("test_nessie_catalog_default_location_");
         tmpDirectory.toFile().deleteOnExit();
-        TrinoFileSystemFactory fileSystemFactory = new HdfsFileSystemFactory(HDFS_ENVIRONMENT, HDFS_FILE_SYSTEM_STATS);
+        IcebergFileSystemFactory fileSystemFactory = new SigningIcebergFileSystemFactory(new HdfsFileSystemFactory(HDFS_ENVIRONMENT, HDFS_FILE_SYSTEM_STATS), new S3FileSystemConfig());
         IcebergNessieCatalogConfig icebergNessieCatalogConfig = new IcebergNessieCatalogConfig()
                 .setDefaultWarehouseDir(tmpDirectory.toAbsolutePath().toString())
                 .setServerUri(URI.create(nessieContainer.getRestApiUri()));
@@ -182,7 +184,7 @@ public class TestTrinoNessieCatalog
                     CatalogHandle.fromId("iceberg:NORMAL:v12345"),
                     jsonCodec(CommitTaskData.class),
                     catalog,
-                    connectorIdentity -> {
+                    (connectorIdentity, fileIOProperties) -> {
                         throw new UnsupportedOperationException();
                     },
                     new TableStatisticsWriter(new NodeVersion("test-version")));
