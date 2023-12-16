@@ -16,6 +16,7 @@ package io.trino.filesystem.s3;
 import io.trino.filesystem.s3.S3FileSystemConfig.S3SseType;
 import io.trino.memory.context.AggregatedMemoryContext;
 import io.trino.memory.context.LocalMemoryContext;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -59,6 +60,7 @@ final class S3OutputStream
     private final RequestPayer requestPayer;
     private final S3SseType sseType;
     private final String sseKmsKeyId;
+    private final AwsCredentialsProvider awsCredentialsProvider;
 
     private int currentPartNumber;
     private byte[] buffer = new byte[0];
@@ -84,6 +86,7 @@ final class S3OutputStream
         this.requestPayer = context.requestPayer();
         this.sseType = context.sseType();
         this.sseKmsKeyId = context.sseKmsKeyId();
+        this.awsCredentialsProvider = context.awsCredentialsProvider();
     }
 
     @SuppressWarnings("NumericCastThatLosesPrecision")
@@ -192,6 +195,7 @@ final class S3OutputStream
         // skip multipart upload if there would only be one part
         if (finished && !multipartUploadStarted) {
             PutObjectRequest request = PutObjectRequest.builder()
+                    .overrideConfiguration(config -> config.credentialsProvider(awsCredentialsProvider))
                     .requestPayer(requestPayer)
                     .bucket(location.bucket())
                     .key(location.key())
@@ -268,6 +272,7 @@ final class S3OutputStream
     {
         if (uploadId.isEmpty()) {
             CreateMultipartUploadRequest request = CreateMultipartUploadRequest.builder()
+                    .overrideConfiguration(config -> config.credentialsProvider(awsCredentialsProvider))
                     .requestPayer(requestPayer)
                     .bucket(location.bucket())
                     .key(location.key())
@@ -285,6 +290,7 @@ final class S3OutputStream
 
         currentPartNumber++;
         UploadPartRequest request = UploadPartRequest.builder()
+                .overrideConfiguration(config -> config.credentialsProvider(awsCredentialsProvider))
                 .requestPayer(requestPayer)
                 .bucket(location.bucket())
                 .key(location.key())
@@ -309,6 +315,7 @@ final class S3OutputStream
     private void finishUpload(String uploadId)
     {
         CompleteMultipartUploadRequest request = CompleteMultipartUploadRequest.builder()
+                .overrideConfiguration(config -> config.credentialsProvider(awsCredentialsProvider))
                 .requestPayer(requestPayer)
                 .bucket(location.bucket())
                 .key(location.key())
@@ -322,6 +329,7 @@ final class S3OutputStream
     private void abortUpload()
     {
         uploadId.map(id -> AbortMultipartUploadRequest.builder()
+                        .overrideConfiguration(config -> config.credentialsProvider(awsCredentialsProvider))
                         .requestPayer(requestPayer)
                         .bucket(location.bucket())
                         .key(location.key())
