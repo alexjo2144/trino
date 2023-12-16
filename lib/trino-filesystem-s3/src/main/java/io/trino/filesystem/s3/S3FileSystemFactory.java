@@ -20,9 +20,7 @@ import io.trino.filesystem.TrinoFileSystem;
 import io.trino.filesystem.TrinoFileSystemFactory;
 import io.trino.spi.security.ConnectorIdentity;
 import jakarta.annotation.PreDestroy;
-import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
-import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
-import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.auth.credentials.*;
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.http.apache.ProxyConfiguration;
@@ -61,7 +59,7 @@ public final class S3FileSystemFactory
                         .build().newExecutionInterceptor())
                 .build());
 
-        Optional<StaticCredentialsProvider> staticCredentialsProvider = getStaticCredentialsProvider(config);
+        Optional<AwsCredentialsProvider> staticCredentialsProvider = getStaticCredentialsProvider(config);
         staticCredentialsProvider.ifPresent(s3::credentialsProvider);
 
         Optional.ofNullable(config.getRegion()).map(Region::of).ifPresent(s3::region);
@@ -105,7 +103,8 @@ public final class S3FileSystemFactory
                 toIntExact(config.getStreamingPartSize().toBytes()),
                 config.isRequesterPays(),
                 config.getSseType(),
-                config.getSseKmsKeyId());
+                config.getSseKmsKeyId(),
+                staticCredentialsProvider.orElseGet(() -> DefaultCredentialsProvider.builder().build()));
     }
 
     @PreDestroy
@@ -118,17 +117,23 @@ public final class S3FileSystemFactory
     public TrinoFileSystem create(ConnectorIdentity identity)
     {
         if (identity.getExtraCredentials().containsKey(EXTRA_CREDENTIALS_ACCESS_KEY_PROPERTY)) {
-            clientBuilder.credentialsProvider(StaticCredentialsProvider.create(AwsSessionCredentials.create(
+            AwsCredentialsProvider awsCredentialsProvider = StaticCredentialsProvider.create(AwsSessionCredentials.create(
                     identity.getExtraCredentials().get(EXTRA_CREDENTIALS_ACCESS_KEY_PROPERTY),
                     identity.getExtraCredentials().get(EXTRA_CREDENTIALS_SECRET_KEY_PROPERTY),
-                    identity.getExtraCredentials().get(EXTRA_CREDENTIALS_SESSION_TOKEN_PROPERTY))));
-            return new S3FileSystem(clientBuilder.build(), context);
+                    identity.getExtraCredentials().get(EXTRA_CREDENTIALS_SESSION_TOKEN_PROPERTY)));
+
+            return new S3FileSystem(client, new S3Context(
+                    context.partSize(),
+                    context.requesterPays(),
+                    context.sseType(),
+                    context.sseKmsKeyId(),
+                    awsCredentialsProvider));
         }
 
         return new S3FileSystem(client, context);
     }
 
-    private static Optional<StaticCredentialsProvider> getStaticCredentialsProvider(S3FileSystemConfig config)
+    private static Optional<AwsCredentialsProvider> getStaticCredentialsProvider(S3FileSystemConfig config)
     {
         if ((config.getAwsAccessKey() != null) || (config.getAwsSecretKey() != null)) {
             return Optional.of(StaticCredentialsProvider.create(

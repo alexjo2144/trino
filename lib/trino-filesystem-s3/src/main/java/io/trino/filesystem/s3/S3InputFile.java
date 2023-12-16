@@ -17,6 +17,7 @@ import io.trino.filesystem.Location;
 import io.trino.filesystem.TrinoInput;
 import io.trino.filesystem.TrinoInputFile;
 import io.trino.filesystem.TrinoInputStream;
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
@@ -37,6 +38,7 @@ final class S3InputFile
     private final S3Client client;
     private final S3Location location;
     private final RequestPayer requestPayer;
+    private final AwsCredentialsProvider awsCredentialsProvider;
     private Long length;
     private Instant lastModified;
 
@@ -45,6 +47,7 @@ final class S3InputFile
         this.client = requireNonNull(client, "client is null");
         this.location = requireNonNull(location, "location is null");
         this.requestPayer = context.requestPayer();
+        this.awsCredentialsProvider = context.awsCredentialsProvider();
         this.length = length;
         location.location().verifyValidFileLocation();
     }
@@ -97,6 +100,7 @@ final class S3InputFile
     private GetObjectRequest newGetObjectRequest()
     {
         return GetObjectRequest.builder()
+                .overrideConfiguration(config -> config.credentialsProvider(awsCredentialsProvider))
                 .requestPayer(requestPayer)
                 .bucket(location.bucket())
                 .key(location.key())
@@ -107,6 +111,7 @@ final class S3InputFile
             throws IOException
     {
         HeadObjectRequest request = HeadObjectRequest.builder()
+                .overrideConfiguration(config -> config.credentialsProvider(awsCredentialsProvider))
                 .requestPayer(requestPayer)
                 .bucket(location.bucket())
                 .key(location.key())
