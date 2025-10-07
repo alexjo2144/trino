@@ -189,7 +189,7 @@ public final class IcebergQueryRunner
     private static Builder icebergQueryRunnerMainBuilder()
     {
         return IcebergQueryRunner.builder()
-                .addCoordinatorProperty("http-server.http.port", "8080")
+                .addCoordinatorProperty("http-server.http.port", "8081")
                 .setTpcdsCatalogEnabled(true);
     }
 
@@ -549,6 +549,7 @@ public final class IcebergQueryRunner
                     .addIcebergProperty("hive.metastore.catalog.dir", metastoreDir.toURI().toString())
                     .setInitialTables(TpchTable.getTables())
                     .build();
+
             log.info("======== SERVER STARTED ========");
             log.info("\n====\n%s\n====", queryRunner.getCoordinator().getBaseUrl());
         }

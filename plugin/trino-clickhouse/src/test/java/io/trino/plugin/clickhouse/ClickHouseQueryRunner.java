@@ -106,7 +106,9 @@ public final class ClickHouseQueryRunner
     public static void main(String[] args)
             throws Exception
     {
-        QueryRunner queryRunner = builder(new TestingClickHouseServer())
+        var clickhouse = new TestingClickHouseServer();
+        QueryRunner queryRunner = builder(clickhouse)
+                .addConnectorProperty("clickhouse.map-string-as-varchar", "true")
                 .addCoordinatorProperty("http-server.http.port", "8080")
                 .setInitialTables(TpchTable.getTables())
                 .build();
@@ -114,5 +116,7 @@ public final class ClickHouseQueryRunner
         Logger log = Logger.get(ClickHouseQueryRunner.class);
         log.info("======== SERVER STARTED ========");
         log.info("\n====\n%s\n====", queryRunner.getCoordinator().getBaseUrl());
+        log.info("Username: %s", clickhouse.getUsername());
+        log.info("Password: %s", clickhouse.getPassword());
     }
 }

@@ -5,4 +5,11 @@
 # in production. For example configuration, see the Trino documentation.
 #
 
-connector.name=jmx
+io.trino=INFO
+
+# show classpath for plugins
+io.trino.server.PluginManager=DEBUG
+
+# Maven plugin loading code
+com.ning.http.client=WARN
+
